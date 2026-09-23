@@ -1,0 +1,58 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-display: "Space Grotesk", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+@layer base {
+  html {
+    color-scheme: light dark;
+  }
+
+  body {
+    @apply bg-paper-50 text-ink-950 font-body antialiased;
+  }
+
+  .dark body {
+    @apply bg-ink-950 text-paper-50;
+  }
+
+  * {
+    @apply border-paper-200;
+  }
+  .dark * {
+    @apply border-ink-800;
+  }
+
+  /* Visible keyboard focus everywhere, no silent focus removal */
+  :focus-visible {
+    outline: 2px solid #4c7df0;
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  table {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .font-mono,
+  .tabular {
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

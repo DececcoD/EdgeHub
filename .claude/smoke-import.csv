@@ -1,0 +1,3 @@
+eventLabel,leagueKey,marketType,selectionLabel,sportsbookKey,placedAt,oddsAmerican,stakeAmount,notes
+Suns @ Lakers,nba,moneyline,Lakers,fanduel,2026-09-18T00:00:00Z,-120,20,imported
+Bad Row,zzz,moneyline,Lakers,fanduel,2026-09-18T00:00:00Z,-120,20,should be rejected

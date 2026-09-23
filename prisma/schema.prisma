@@ -1,0 +1,768 @@
+// EdgeHub database schema - PRD Section 8.
+//
+// This schema targets PostgreSQL per the PRD's recommended stack (Section
+// 7.1). It is the documented, migration-ready source of truth for the
+// production database. The running prototype in this repo does NOT require
+// a live Postgres instance - the app reads from lib/mock fixtures so the UI
+// is demoable with zero external setup. Point DATABASE_URL at a real
+// Postgres instance and run `npm run db:migrate` when you're ready to wire
+// this up for real.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Identity / billing
+// ---------------------------------------------------------------------------
+
+enum Plan {
+  free
+  pro
+  elite
+}
+
+enum OddsFormat {
+  american
+  decimal
+}
+
+// Section 12.3's RBAC requirement - app-level, not a Clerk Organization
+// role (Orgs are a multi-tenant feature this single-tenant app has no use
+// for). Grant is deliberately not self-service - no UI writes this field;
+// see DEPLOYMENT.md for how to grant it for real.
+enum Role {
+  user
+  admin
+}
+
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  role          Role      @default(user)
+  clerkUserId   String?   @unique // set once real auth (Section 7.1) is wired up; null in mock mode
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  profile       UserProfile?
+  subscription  Subscription?
+  entitlement   Entitlement?
+  consentEvents ConsentEvent[]
+  watchlists    Watchlist[]
+  alerts        Alert[]
+  savedViews    SavedView[]
+  bankrolls     Bankroll[]
+  betEntries    BetEntry[]
+  ledgerEntries LedgerEntry[]
+  analysisRequests AnalysisRequest[]
+  auditLogsAsActor AuditLog[] @relation("AuditLogActor")
+
+  @@map("users")
+}
+
+model UserProfile {
+  id             String     @id @default(uuid())
+  userId         String     @unique
+  user           User       @relation(fields: [userId], references: [id])
+  oddsFormat     OddsFormat @default(american)
+  favoriteLeagues String[]
+  favoriteBooks   String[]
+  timezone       String     @default("UTC")
+  displayUnits   String     @default("currency") // "currency" | "units"
+  onboardedAt    DateTime?
+  updatedAt      DateTime   @updatedAt
+
+  @@map("user_profiles")
+}
+
+model Subscription {
+  id                   String   @id @default(uuid())
+  userId               String   @unique
+  user                 User     @relation(fields: [userId], references: [id])
+  plan                 Plan     @default(free)
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  status               String   @default("active")
+  currentPeriodEnd     DateTime?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@map("subscriptions")
+}
+
+model Entitlement {
+  id                  String   @id @default(uuid())
+  userId               String  @unique
+  user                 User    @relation(fields: [userId], references: [id])
+  plan                 Plan    @default(free)
+  opportunityRowsPerDay Int    @default(20)
+  aiExplanationsPerDay Int     @default(3)
+  betTrackerLimit      Int?    @default(50)
+  activeAlertLimit     Int     @default(2)
+  lineHistoryDays      Int     @default(1)
+  exportsEnabled       Boolean @default(false)
+  advancedFiltersEnabled Boolean @default(false)
+  updatedAt            DateTime @updatedAt
+
+  @@map("entitlements")
+}
+
+model ConsentEvent {
+  id        String   @id @default(uuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  email     String?
+  kind      String // "marketing_email" | "terms" | "privacy" | "age_jurisdiction"
+  source    String
+  consentedAt DateTime @default(now())
+  unsubscribedAt DateTime?
+
+  @@map("consent_events")
+}
+
+// ---------------------------------------------------------------------------
+// Sports catalog
+// ---------------------------------------------------------------------------
+
+model Sport {
+  id      String   @id @default(uuid())
+  key     String   @unique // "football", "basketball", ...
+  name    String
+  leagues League[]
+
+  @@map("sports")
+}
+
+model League {
+  id       String    @id @default(uuid())
+  sportId  String
+  sport    Sport     @relation(fields: [sportId], references: [id])
+  key      String    @unique // "nfl", "nba", "mlb", "nhl"
+  name     String
+  seasons  Season[]
+  teams    Team[]
+  events   Event[]
+
+  @@map("leagues")
+}
+
+model Season {
+  id       String  @id @default(uuid())
+  leagueId String
+  league   League  @relation(fields: [leagueId], references: [id])
+  label    String // "2026"
+  startsAt DateTime
+  endsAt   DateTime
+
+  @@map("seasons")
+}
+
+model Team {
+  id        String   @id @default(uuid())
+  leagueId  String
+  league    League   @relation(fields: [leagueId], references: [id])
+  key       String // canonical short code, e.g. "BAL"
+  name      String
+  city      String?
+  venueId   String?
+  venue     Venue?   @relation(fields: [venueId], references: [id])
+  players   Player[]
+  eventParticipations EventParticipant[]
+
+  @@unique([leagueId, key])
+  @@map("teams")
+}
+
+model Player {
+  id     String @id @default(uuid())
+  teamId String
+  team   Team   @relation(fields: [teamId], references: [id])
+  name   String
+
+  @@map("players")
+}
+
+model Venue {
+  id       String  @id @default(uuid())
+  name     String
+  city     String
+  isOutdoor Boolean @default(false)
+  teams    Team[]
+  events   Event[]
+
+  @@map("venues")
+}
+
+// ---------------------------------------------------------------------------
+// Market catalog
+// ---------------------------------------------------------------------------
+
+enum EventStatus {
+  scheduled
+  live
+  final
+  postponed
+  canceled
+}
+
+model Event {
+  id                String        @id @default(uuid())
+  leagueId          String
+  league            League        @relation(fields: [leagueId], references: [id])
+  canonicalStartAt  DateTime
+  status            EventStatus   @default(scheduled)
+  venueId           String?
+  venue             Venue?        @relation(fields: [venueId], references: [id])
+  sourceConfidence  Float         @default(1.0)
+  participants      EventParticipant[]
+  markets           Market[]
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  @@index([leagueId, canonicalStartAt])
+  @@map("events")
+}
+
+model EventParticipant {
+  id       String @id @default(uuid())
+  eventId  String
+  event    Event  @relation(fields: [eventId], references: [id])
+  teamId   String
+  team     Team   @relation(fields: [teamId], references: [id])
+  side     String // "home" | "away"
+  outcomes Outcome[]
+
+  @@map("event_participants")
+}
+
+enum MarketType {
+  moneyline
+  spread
+  total
+}
+
+enum MarketStatus {
+  open
+  suspended
+  settled
+  voided
+}
+
+model Market {
+  id            String       @id @default(uuid())
+  eventId       String
+  event         Event        @relation(fields: [eventId], references: [id])
+  marketType    MarketType
+  period        String       @default("full_game")
+  lineKey       String? // e.g. spread/total point at time of canonicalization
+  status        MarketStatus @default(open)
+  rulesVersion  String       @default("v1")
+  outcomes      Outcome[]
+  marketRules   MarketRule[]
+
+  @@unique([eventId, marketType, period, lineKey])
+  @@map("markets")
+}
+
+model MarketRule {
+  id       String @id @default(uuid())
+  marketId String
+  market   Market @relation(fields: [marketId], references: [id])
+  key      String
+  value    String
+
+  @@map("market_rules")
+}
+
+model Outcome {
+  id             String  @id @default(uuid())
+  marketId       String
+  market         Market  @relation(fields: [marketId], references: [id])
+  participantId  String?
+  participant    EventParticipant? @relation(fields: [participantId], references: [id])
+  side           String // "home" | "away" | "over" | "under"
+  label          String
+  canonicalKey   String
+
+  oddsSnapshots       OddsSnapshot[]
+  currentOdds         CurrentOdds[]
+  opportunitySnapshots OpportunitySnapshot[]
+  modelPredictions    ModelPrediction[]
+
+  @@unique([marketId, canonicalKey])
+  @@map("outcomes")
+}
+
+// ---------------------------------------------------------------------------
+// Sources
+// ---------------------------------------------------------------------------
+
+model Provider {
+  id     String @id @default(uuid())
+  key    String @unique // "the-odds-api"
+  name   String
+  health ProviderHealth?
+  oddsSnapshots OddsSnapshot[]
+  ingestionRuns IngestionRun[]
+  sourceEntities SourceEntity[]
+
+  @@map("providers")
+}
+
+model Sportsbook {
+  id           String  @id @default(uuid())
+  key          String  @unique // "fanduel" | "draftkings" | "betmgm" | "caesars"
+  name         String
+  logoUrl      String?
+  isVisible    Boolean @default(true)
+  affiliateUrl String?
+
+  oddsSnapshots OddsSnapshot[]
+  currentOdds   CurrentOdds[]
+  betEntries    BetEntry[]
+
+  @@map("sportsbooks")
+}
+
+model SourceEntity {
+  id                 String  @id @default(uuid())
+  providerId         String
+  provider           Provider @relation(fields: [providerId], references: [id])
+  sourceKey          String // provider's own ID for a team/event/market
+  entityType         String // "team" | "event" | "market" | "outcome"
+  canonicalEntityId  String?
+  confidence         Float   @default(1.0)
+
+  @@unique([providerId, sourceKey, entityType])
+  @@map("source_entities")
+}
+
+model ProviderMapping {
+  id        String   @id @default(uuid())
+  providerId String
+  entityType String
+  sourceKey  String
+  canonicalId String
+  confidence  Float
+  reviewedAt  DateTime?
+  createdAt   DateTime @default(now())
+
+  @@map("provider_mappings")
+}
+
+// ---------------------------------------------------------------------------
+// Time series
+// ---------------------------------------------------------------------------
+
+model OddsSnapshot {
+  id            String     @id @default(uuid())
+  providerId    String
+  provider      Provider   @relation(fields: [providerId], references: [id])
+  sportsbookId  String
+  sportsbook    Sportsbook @relation(fields: [sportsbookId], references: [id])
+  marketId      String
+  outcomeId     String
+  outcome       Outcome    @relation(fields: [outcomeId], references: [id])
+  decimalOdds   Decimal    @db.Decimal(10, 4)
+  americanOdds  Int
+  point         Decimal?   @db.Decimal(6, 2)
+  observedAt    DateTime
+  fetchedAt     DateTime   @default(now())
+  sourceQuoteId String
+  rawRef        String? // pointer to immutable raw payload, not the payload itself
+  currentOdds   CurrentOdds[]
+
+  // Append-only: no updatedAt, no update path in application code.
+  @@index([marketId, observedAt])
+  @@index([outcomeId, observedAt])
+  @@map("odds_snapshots")
+}
+
+model CurrentOdds {
+  id            String     @id @default(uuid())
+  outcomeId     String
+  outcome       Outcome    @relation(fields: [outcomeId], references: [id])
+  sportsbookId  String
+  sportsbook    Sportsbook @relation(fields: [sportsbookId], references: [id])
+  snapshotId    String
+  snapshot      OddsSnapshot @relation(fields: [snapshotId], references: [id])
+  freshnessState String    @default("current")
+  updatedAt     DateTime   @updatedAt
+
+  @@unique([outcomeId, sportsbookId])
+  @@map("current_odds")
+}
+
+model LineHistoryRollup {
+  id         String   @id @default(uuid())
+  outcomeId  String
+  bucketStart DateTime
+  bucketEnd   DateTime
+  openDecimal Decimal @db.Decimal(10, 4)
+  closeDecimal Decimal @db.Decimal(10, 4)
+  minDecimal  Decimal @db.Decimal(10, 4)
+  maxDecimal  Decimal @db.Decimal(10, 4)
+  hadGap      Boolean @default(false)
+
+  @@index([outcomeId, bucketStart])
+  @@map("line_history_rollups")
+}
+
+// ---------------------------------------------------------------------------
+// Analytics (derived, versioned, always traceable to source snapshots)
+// ---------------------------------------------------------------------------
+
+model ConsensusSnapshot {
+  id             String   @id @default(uuid())
+  marketId       String
+  methodVersion  String
+  eligibleBooks  Int
+  probabilities  Json
+  overround      Decimal  @db.Decimal(6, 4)
+  calculatedAt   DateTime @default(now())
+
+  @@index([marketId, calculatedAt])
+  @@map("consensus_snapshots")
+}
+
+model OpportunitySnapshot {
+  id            String   @id @default(uuid())
+  outcomeId     String
+  outcome       Outcome  @relation(fields: [outcomeId], references: [id])
+  estimateSource String  // "consensus" | "model"
+  pEstimate     Decimal  @db.Decimal(8, 6)
+  pImplied      Decimal  @db.Decimal(8, 6)
+  edgePp        Decimal  @db.Decimal(6, 3)
+  ev            Decimal  @db.Decimal(8, 5)
+  score         Decimal  @db.Decimal(6, 3)
+  scoreVersion  String
+  dataQuality   String
+  calculatedAt  DateTime @default(now())
+
+  @@index([outcomeId, calculatedAt])
+  @@index([score])
+  @@map("opportunity_snapshots")
+}
+
+model ModelVersion {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  description String
+  createdAt   DateTime @default(now())
+  predictions ModelPrediction[]
+
+  @@map("model_versions")
+}
+
+model ModelPrediction {
+  id             String       @id @default(uuid())
+  outcomeId      String
+  outcome        Outcome      @relation(fields: [outcomeId], references: [id])
+  modelVersionId String
+  modelVersion   ModelVersion @relation(fields: [modelVersionId], references: [id])
+  pEstimate      Decimal      @db.Decimal(8, 6)
+  calculatedAt   DateTime     @default(now())
+
+  @@map("model_predictions")
+}
+
+// ---------------------------------------------------------------------------
+// User activity
+// ---------------------------------------------------------------------------
+
+model Watchlist {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+  name   String @default("My watchlist")
+  items  WatchlistItem[]
+  createdAt DateTime @default(now())
+
+  @@map("watchlists")
+}
+
+model WatchlistItem {
+  id          String    @id @default(uuid())
+  watchlistId String
+  watchlist   Watchlist @relation(fields: [watchlistId], references: [id])
+  outcomeId   String
+  addedAt     DateTime  @default(now())
+
+  @@map("watchlist_items")
+}
+
+enum AlertConditionType {
+  odds_threshold
+  edge_threshold
+  book_spread
+  movement
+  start_reminder
+  freshness_recovery
+}
+
+enum AlertStatus {
+  active
+  paused
+  expired
+}
+
+model Alert {
+  id             String             @id @default(uuid())
+  userId         String
+  user           User               @relation(fields: [userId], references: [id])
+  subjectType    String // "outcome" | "market" | "watchlist_item"
+  subjectId      String
+  conditionType  AlertConditionType
+  threshold      Decimal?           @db.Decimal(10, 4)
+  channel        String             @default("in_app") // "in_app" | "email"
+  quietHoursStart String            @default("23:00")
+  quietHoursEnd   String            @default("07:00")
+  status         AlertStatus        @default(active)
+  cooldownSeconds Int               @default(1800)
+  createdAt      DateTime           @default(now())
+  events         AlertEvent[]
+
+  @@map("alerts")
+}
+
+model AlertEvent {
+  id           String   @id @default(uuid())
+  alertId      String
+  alert        Alert    @relation(fields: [alertId], references: [id])
+  triggeredAt  DateTime @default(now())
+  transitionKey String  // alert_id + transition + quote/version id, for idempotency
+  evidence     Json
+
+  @@unique([alertId, transitionKey])
+  @@map("alert_events")
+}
+
+model SavedView {
+  id      String @id @default(uuid())
+  userId  String
+  user    User   @relation(fields: [userId], references: [id])
+  name    String
+  filters Json
+  createdAt DateTime @default(now())
+
+  @@map("saved_views")
+}
+
+// ---------------------------------------------------------------------------
+// Tracking (auditable performance ledger)
+// ---------------------------------------------------------------------------
+
+model Bankroll {
+  id           String   @id @default(uuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+  startingAmount Decimal @db.Decimal(12, 2)
+  currency     String   @default("USD")
+  maxStakeFraction Decimal @default(0.02) @db.Decimal(5, 4)
+  kellySizingEnabled Boolean @default(false)
+  createdAt    DateTime @default(now())
+
+  @@map("bankrolls")
+}
+
+enum BetStatus {
+  open
+  won
+  lost
+  push
+  void
+  partial_cash_out
+  full_cash_out
+}
+
+model BetEntry {
+  id              String     @id @default(uuid())
+  userId          String
+  user            User       @relation(fields: [userId], references: [id])
+  eventId         String
+  sportsbookId    String
+  sportsbook      Sportsbook @relation(fields: [sportsbookId], references: [id])
+  marketType      MarketType
+  placedAt        DateTime
+  oddsDecimal     Decimal    @db.Decimal(10, 4)
+  stakeAmount     Decimal    @db.Decimal(12, 2)
+  stakeUnits      Decimal?   @db.Decimal(8, 3)
+  currency        String     @default("USD")
+  status          BetStatus  @default(open)
+  source          String     @default("manual") // "manual" | "csv_import"
+  notesEncrypted  String?
+  closingDecimalOdds Decimal? @db.Decimal(10, 4) // for CLV; null means "unavailable", never assumed
+  legs            BetLeg[]
+  settlements     BetSettlement[]
+  ledgerEntries   LedgerEntry[]
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  @@index([userId, placedAt])
+  @@map("bet_entries")
+}
+
+model BetLeg {
+  id         String   @id @default(uuid())
+  betEntryId String
+  betEntry   BetEntry @relation(fields: [betEntryId], references: [id])
+  outcomeId  String
+  label      String
+
+  @@map("bet_legs")
+}
+
+model BetSettlement {
+  id           String   @id @default(uuid())
+  betEntryId   String
+  betEntry     BetEntry @relation(fields: [betEntryId], references: [id])
+  status       BetStatus
+  netProfit    Decimal  @db.Decimal(12, 2)
+  returnedAmount Decimal @db.Decimal(12, 2)
+  settledAt    DateTime @default(now())
+  settledBy    String   @default("system") // "system" | "user_confirmed"
+  // Audit trail (TRK-04): original values retained alongside corrections.
+  previousValues Json?
+
+  @@map("bet_settlements")
+}
+
+model LedgerEntry {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  betEntryId  String
+  betEntry    BetEntry @relation(fields: [betEntryId], references: [id])
+  type        String // "stake" | "settlement" | "cash_out" | "correction"
+  amount      Decimal  @db.Decimal(12, 2)
+  units       Decimal? @db.Decimal(8, 3)
+  effectiveAt DateTime
+
+  // Immutable: corrections are reversing entries, never in-place edits.
+  @@map("ledger_entries")
+}
+
+// ---------------------------------------------------------------------------
+// AI (grounded explanation trace)
+// ---------------------------------------------------------------------------
+
+model AnalysisRequest {
+  id           String   @id @default(uuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+  outcomeId    String
+  requestType  String // "explain_movement" | "compare_prices" | "summarize_risks"
+  evidenceHash String
+  createdAt    DateTime @default(now())
+  evidence     AnalysisEvidence[]
+  outputs      AnalysisOutput[]
+
+  @@map("analysis_requests")
+}
+
+model AnalysisEvidence {
+  id                String          @id @default(uuid())
+  analysisRequestId String
+  analysisRequest   AnalysisRequest @relation(fields: [analysisRequestId], references: [id])
+  block             String // "market_state" | "calculated_metrics" | "movement" | "context" | "limitations"
+  payload           Json
+
+  @@map("analysis_evidence")
+}
+
+model AnalysisOutput {
+  id                String          @id @default(uuid())
+  analysisRequestId String
+  analysisRequest   AnalysisRequest @relation(fields: [analysisRequestId], references: [id])
+  summary           String
+  supportingFactors Json
+  riskFactors       Json
+  dataLimitations   Json
+  metricExplanation String
+  citations         Json
+  safetyLabel       String  @default("Educational analytics; outcomes uncertain.")
+  promptVersion     String
+  model             String
+  latencyMs         Int
+  generatedAt       DateTime @default(now())
+
+  @@map("analysis_outputs")
+}
+
+// ---------------------------------------------------------------------------
+// Operations
+// ---------------------------------------------------------------------------
+
+model IngestionRun {
+  id         String   @id @default(uuid())
+  providerId String
+  provider   Provider @relation(fields: [providerId], references: [id])
+  startedAt  DateTime @default(now())
+  finishedAt DateTime?
+  status     String   @default("running") // "running" | "success" | "failed" | "partial"
+  recordsProcessed Int @default(0)
+  errorSummary String?
+
+  @@map("ingestion_runs")
+}
+
+model ProviderHealth {
+  id           String   @id @default(uuid())
+  providerId   String   @unique
+  provider     Provider @relation(fields: [providerId], references: [id])
+  quotaRemaining Int?
+  latencyMs    Int?
+  errorRate    Float    @default(0)
+  lastSuccessAt DateTime?
+  circuitBreakerOpen Boolean @default(false)
+  consecutiveFailures Int   @default(0) // Section 11.2 circuit breaker - see lib/ingest/circuit-breaker.ts
+  updatedAt    DateTime @updatedAt
+
+  @@map("provider_health")
+}
+
+model MappingException {
+  id          String   @id @default(uuid())
+  providerId  String
+  entityType  String
+  sourceKey   String
+  reason      String
+  status      String   @default("open") // "open" | "resolved" | "ignored"
+  createdAt   DateTime @default(now())
+  resolvedAt  DateTime?
+
+  @@map("mapping_exceptions")
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  actorType   String // "user" | "admin" | "system"
+  actorId     String?
+  actor       User?    @relation("AuditLogActor", fields: [actorId], references: [id])
+  action      String
+  objectType  String
+  objectId    String
+  beforeHash  String?
+  afterHash   String?
+  requestId   String
+  createdAt   DateTime @default(now())
+
+  @@map("audit_logs")
+}
+
+model FeatureFlag {
+  id         String   @id @default(uuid())
+  key        String   @unique
+  enabled    Boolean  @default(false)
+  plans      Plan[]
+  regions    String[]
+  cohorts    String[]
+  description String?
+  updatedAt  DateTime @updatedAt
+
+  @@map("feature_flags")
+}

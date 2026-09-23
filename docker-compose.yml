@@ -1,0 +1,48 @@
+# Local smoke test for the Docker image + a real Postgres instance - not a
+# production deployment topology (a real deploy would use a managed
+# Postgres, not a container with a local volume). See DEPLOYMENT.md.
+#
+# Runs the app in mock mode by default (USE_MOCK_DATA=true) even though a
+# real, migrated database is available alongside it - that lets you verify
+# `db:migrate`/`db:seed`/`ingest` against a real Postgres without touching
+# what the running app actually serves, then flip USE_MOCK_DATA=false once
+# you're ready to check the real read path too.
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: edgehub
+      POSTGRES_PASSWORD: edgehub
+      POSTGRES_DB: edgehub
+    ports:
+      - "5432:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U edgehub"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      args:
+        NEXT_PUBLIC_AUTH_PROVIDER: mock
+        NEXT_PUBLIC_BILLING_PROVIDER: mock
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://edgehub:edgehub@db:5432/edgehub
+      USE_MOCK_DATA: "true"
+      AUTH_PROVIDER: mock
+      BILLING_PROVIDER: mock
+
+volumes:
+  db-data:
