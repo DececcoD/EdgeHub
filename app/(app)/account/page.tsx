@@ -1,10 +1,13 @@
 import { getSessionOrDemo } from "@/lib/auth/session";
 import { PreferencesForm } from "@/components/account/preferences-form";
 import { PlanSelector } from "@/components/account/plan-selector";
+import { BankrollForm } from "@/components/account/bankroll-form";
 import { Panel, PanelHeader } from "@/components/ui/primitives";
+import { getBankroll } from "@/lib/mock/user-data";
 
 export default async function AccountPage() {
   const session = await getSessionOrDemo();
+  const bankroll = getBankroll(session.userId);
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-4">
@@ -15,6 +18,7 @@ export default async function AccountPage() {
 
       <PlanSelector currentPlan={session.plan} />
       <PreferencesForm preferences={session.preferences} />
+      <BankrollForm bankroll={bankroll} />
 
       <Panel>
         <PanelHeader title="Responsible use" subtitle="Section 12.2 - self-set limits, no coercive copy" />

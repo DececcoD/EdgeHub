@@ -1,11 +1,12 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { findOutcome, getPriceHistory } from "@/lib/data-source";
-import { listWatchlist } from "@/lib/mock/user-data";
+import { getBankroll, listWatchlist } from "@/lib/mock/user-data";
 import { getSessionOrDemo } from "@/lib/auth/session";
 import { decimalToImpliedProbability } from "@/lib/calc/odds";
 import { fairDecimalOdds } from "@/lib/calc/ev";
-import { formatDecimalOdds, formatPercentagePoints, formatProbability, formatSignedPercent } from "@/lib/calc/format";
+import { suggestStake } from "@/lib/calc/kelly";
+import { formatCurrency, formatDecimalOdds, formatPercentagePoints, formatProbability, formatSignedPercent } from "@/lib/calc/format";
 import { FreshnessBadge } from "@/components/ui/freshness-badge";
 import { OddsCell } from "@/components/ui/odds-cell";
 import { Panel, PanelHeader } from "@/components/ui/primitives";
@@ -26,6 +27,17 @@ export default async function AnalyzerDetailPage({ params }: { params: { outcome
 
   const pImplied = outcome.bestQuote ? decimalToImpliedProbability(outcome.bestQuote.decimalOdds) : null;
   const fairOdds = outcome.consensus ? fairDecimalOdds(outcome.consensus.probability) : null;
+
+  const bankroll = getBankroll(session.userId);
+  const stake =
+    bankroll?.kellySizingEnabled && outcome.consensus && outcome.bestQuote
+      ? suggestStake({
+          p: outcome.consensus.probability,
+          decimalOdds: outcome.bestQuote.decimalOdds,
+          bankroll: bankroll.startingAmount,
+          userMaxFraction: bankroll.maxStakeFraction
+        })
+      : null;
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-4">
@@ -121,6 +133,47 @@ export default async function AnalyzerDetailPage({ params }: { params: { outcome
             <li>Opportunity score is a ranking aid (Section 6.6), not a win probability.</li>
           </ul>
         </details>
+      </Panel>
+
+      <Panel>
+        <PanelHeader title="Suggested stake size" subtitle="A risk-management calculation, not a recommendation to wager - Section 6.4" />
+        <div className="p-4 text-sm">
+          {!bankroll && (
+            <p className="text-paper-muted dark:text-ink-muted">
+              Set up a bankroll in{" "}
+              <Link href="/account" className="underline hover:no-underline">
+                Account
+              </Link>{" "}
+              to see stake sizing guidance here.
+            </p>
+          )}
+          {bankroll && !bankroll.kellySizingEnabled && (
+            <p className="text-paper-muted dark:text-ink-muted">
+              Stake sizing is turned off. Enable it in{" "}
+              <Link href="/account" className="underline hover:no-underline">
+                Account
+              </Link>{" "}
+              to see a suggestion for this outcome.
+            </p>
+          )}
+          {bankroll?.kellySizingEnabled && !stake && (
+            <p className="text-paper-muted dark:text-ink-muted">Not enough data on this outcome (needs a best price and a consensus probability) to size a stake.</p>
+          )}
+          {stake && stake.fullKellyFraction <= 0 && (
+            <p className="text-paper-muted dark:text-ink-muted">No positive edge detected at the current best price - no stake is suggested.</p>
+          )}
+          {stake && stake.fullKellyFraction > 0 && (
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+              <FormulaMetric label="Full Kelly" value={formatProbability(stake.fullKellyFraction, 2)} />
+              <FormulaMetric label="Quarter Kelly" value={formatProbability(stake.fractionalKellyFraction, 2)} />
+              <FormulaMetric
+                label={stake.capApplied ? "Suggested (capped)" : "Suggested"}
+                value={`${formatCurrency(stake.cappedAmount)} (${formatProbability(stake.cappedFraction, 2)})`}
+                tone="signal"
+              />
+            </div>
+          )}
+        </div>
       </Panel>
 
       {outcome.bestQuote && (

@@ -165,3 +165,16 @@ export interface MockSession {
   role: "user" | "admin";
   preferences: UserPreferences;
 }
+
+/**
+ * A user-declared reference bankroll for Kelly-based stake sizing (Section
+ * 6.4). Purely a sizing input the user maintains themselves - not a ledger
+ * balance, and never auto-adjusted from tracked bet results.
+ */
+export interface BankrollSettings {
+  startingAmount: number;
+  currency: "USD";
+  maxStakeFraction: number; // 0-1, capped at DEFAULT_MAX_BANKROLL_FRACTION regardless
+  kellySizingEnabled: boolean; // off by default - PRD requires explicit opt-in
+  updatedAt: string;
+}

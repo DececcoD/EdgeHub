@@ -4,6 +4,7 @@
  * schema and its downstream consumer can never quietly drift apart.
  */
 import { z } from "zod";
+import { DEFAULT_MAX_BANKROLL_FRACTION } from "../calc/kelly";
 
 export const leagueKeySchema = z.enum(["nfl", "nba", "mlb", "nhl"]);
 export const sportsbookKeySchema = z.enum(["fanduel", "draftkings", "betmgm", "caesars"]);
@@ -90,4 +91,15 @@ export const settleBetSchema = z.object({
 
 export const importCsvSchema = z.object({
   csv: z.string().trim().min(1, "csv text is required")
+});
+
+export const bankrollSchema = z.object({
+  startingAmount: z.number().positive("Starting amount must be greater than 0"),
+  maxStakeFraction: z
+    .number()
+    .min(0)
+    .max(DEFAULT_MAX_BANKROLL_FRACTION, `Max stake cannot exceed ${DEFAULT_MAX_BANKROLL_FRACTION * 100}% of bankroll`)
+    .optional()
+    .default(DEFAULT_MAX_BANKROLL_FRACTION),
+  kellySizingEnabled: z.boolean().optional().default(false)
 });

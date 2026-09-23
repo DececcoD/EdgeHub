@@ -5,8 +5,9 @@
  */
 
 import { americanToDecimal, decimalToAmerican } from "../calc/odds";
+import { DEFAULT_MAX_BANKROLL_FRACTION } from "../calc/kelly";
 import { settleBet, type BetStatus } from "../calc/settlement";
-import type { AlertDef, AlertFiredEvent, LeagueKey, MarketType, SportsbookKey, TrackedBet } from "../types";
+import type { AlertDef, AlertFiredEvent, BankrollSettings, LeagueKey, MarketType, SportsbookKey, TrackedBet } from "../types";
 import { ensureDemoUser } from "../auth/user-store";
 import { listOpportunities } from "./store";
 
@@ -14,6 +15,7 @@ const betsByUser = new Map<string, TrackedBet[]>();
 const alertsByUser = new Map<string, AlertDef[]>();
 const watchlistByUser = new Map<string, string[]>(); // userId -> outcomeId[]
 const alertEventsByUser = new Map<string, AlertFiredEvent[]>();
+const bankrollByUser = new Map<string, BankrollSettings>();
 let betSeq = 1;
 let alertSeq = 1;
 let alertEventSeq = 1;
@@ -176,6 +178,35 @@ export function removeFromWatchlist(userId: string, outcomeId: string): void {
 
 export function listWatchlist(userId: string): string[] {
   return watchlistByUser.get(userId) ?? [];
+}
+
+// ---------------------------------------------------------------------------
+// Bankroll settings (Section 6.4) - mock-only, same as tracker/alerts/
+// watchlist above. Prisma's Bankroll model exists but stays unwired; this
+// is a sizing input the user maintains themselves, not a ledger balance.
+// ---------------------------------------------------------------------------
+
+export function getBankroll(userId: string): BankrollSettings | null {
+  return bankrollByUser.get(userId) ?? null;
+}
+
+export function setBankroll(
+  userId: string,
+  input: { startingAmount: number; maxStakeFraction: number; kellySizingEnabled: boolean }
+): BankrollSettings {
+  const settings: BankrollSettings = {
+    startingAmount: input.startingAmount,
+    currency: "USD",
+    maxStakeFraction: Math.min(input.maxStakeFraction, DEFAULT_MAX_BANKROLL_FRACTION),
+    kellySizingEnabled: input.kellySizingEnabled,
+    updatedAt: new Date().toISOString()
+  };
+  bankrollByUser.set(userId, settings);
+  return settings;
+}
+
+export function clearBankroll(userId: string): boolean {
+  return bankrollByUser.delete(userId);
 }
 
 // ---------------------------------------------------------------------------

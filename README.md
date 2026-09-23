@@ -30,7 +30,7 @@ What's mocked and clearly marked as such in code comments:
 ```bash
 npm install
 npm run lint     # ESLint (next/core-web-vitals) - also runs in CI
-npm test         # 104 tests: golden vectors, mock store invariants, CSV validator, AI schema, odds-provider adapter, identity resolution, circuit breaker, alert evaluation, rate limiting, zod body validation
+npm test         # 108 tests: golden vectors, mock store invariants, CSV validator, AI schema, odds-provider adapter, identity resolution, circuit breaker, alert evaluation, rate limiting, zod body validation, bankroll settings
 npm run dev      # http://localhost:3000
 ```
 
@@ -171,6 +171,7 @@ Deliberately out of scope for this pass (flagged, not forgotten):
 - Native mobile/PWA, arbitrage scanner, backtesting (Phase 3+, intentionally gated).
 
 Closed since the last pass:
+- Bankroll input feature (Section 6.4) - previously only the pure Kelly-sizing math existed (`lib/calc/kelly.ts`), with no UI or storage for a user to actually set a bankroll. Now built: an Account settings panel (`components/account/bankroll-form.tsx`) to set a starting amount, max-stake percentage (capped at the mandatory 2%), and an off-by-default toggle for showing sizing guidance; `app/api/v1/account/bankroll/route.ts` (GET/PATCH/DELETE); and a "Suggested stake size" panel on the Analyzer detail page, gated on both a bankroll being set *and* the toggle being on. Mock-only, same scope boundary as tracker/alerts/watchlist below - Prisma's `Bankroll` model exists but stays unwired.
 - `zod`-based input validation on every API route that accepts a body (`lib/api/schemas.ts`, `lib/api/error.ts`'s new `parseBody()`) - see "Accessibility, security & performance" above for what this actually caught (an alert's `conditionType` accepted any string forever, preferences accepted anything at all, several numeric fields silently produced `NaN`).
 - Cross-process alert evaluation - a real ingestion tick now triggers evaluation too, not just a local one. See "Alert evaluation" above for both the fix and a real Next.js architecture constraint (`instrumentation.ts` doesn't share module state with route handlers) discovered while building it.
 - Ingestion circuit breaker (Section 11.2) - `lib/ingest/circuit-breaker.ts`, wired into `lib/ingest/pipeline.ts`'s `ingestLeague()`. 3 consecutive failures opens it; a run is then skipped entirely - never even calls the provider - until a 5-minute cooldown elapses and allows a half-open trial. `ProviderHealth.consecutiveFailures` (new column) and the existing `circuitBreakerOpen` are both surfaced on the admin console.
