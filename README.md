@@ -36,6 +36,17 @@ npm run dev      # http://localhost:3000
 
 No environment variables are required to run the app - it's fully usable out of the box with the seeded `demo@edgehub.app` account (log in with that email, no password, on `/login`), or sign up fresh.
 
+### End-to-end tests
+
+```bash
+npx playwright install chromium   # one-time browser download
+npm run test:e2e                  # or: npm run test:e2e:ui for the interactive runner
+```
+
+50 Playwright specs in `e2e/` - the first committed regression suite for this project; every feature before this was verified with one-off manual Playwright runs during the pass that built it, then discarded. Covers: every core route loads clean (`smoke.spec.ts`), the mock signup/login/logout round trip (`auth.spec.ts`), cross-tab real-time tick push and alert firing on the in-process bus (`realtime.spec.ts`) - the two hardest-to-regress-test behaviors in this app, formalizing what had been manual two-tab runs each time they were touched - tracker/watchlist/alerts CRUD (`tracker-watchlist-alerts.spec.ts`), the bankroll feature's three gated states (`bankroll.spec.ts`), admin RBAC (`admin.spec.ts`), and a `@axe-core/playwright` WCAG 2.2 AA scan across all 20 routes (`accessibility.spec.ts`), formalizing the Section 14 QA pass into a permanent check instead of a one-time audit.
+
+`playwright.config.ts` always boots a **production** server (`npm run build && npm run start`), never `next dev` - dev mode's HMR needs `eval()`, which this app's CSP deliberately blocks (see `middleware.ts`), so running against dev mode would fail every spec on a CSP console error that has nothing to do with the feature under test. Runs single-worker/fully-serial: the mock demo user's tracker/alerts/watchlist/bankroll state lives in one in-process `Map` shared by every request, and parallel specs would race on it. Also runs in CI (`.github/workflows/ci.yml`'s `e2e` job) after the lint/typecheck/unit-test/build job passes.
+
 ## Moving off mock data
 
 Each integration point is isolated so you can swap it without touching callers:
@@ -171,6 +182,7 @@ Deliberately out of scope for this pass (flagged, not forgotten):
 - Native mobile/PWA, arbitrage scanner, backtesting (Phase 3+, intentionally gated).
 
 Closed since the last pass:
+- A committed end-to-end test suite (`e2e/`, see "End-to-end tests" above) - every feature before this was verified with a one-off Playwright script written and discarded during the pass that built it, so nothing guarded against future regressions. Now runs in CI on every push/PR.
 - Bankroll input feature (Section 6.4) - previously only the pure Kelly-sizing math existed (`lib/calc/kelly.ts`), with no UI or storage for a user to actually set a bankroll. Now built: an Account settings panel (`components/account/bankroll-form.tsx`) to set a starting amount, max-stake percentage (capped at the mandatory 2%), and an off-by-default toggle for showing sizing guidance; `app/api/v1/account/bankroll/route.ts` (GET/PATCH/DELETE); and a "Suggested stake size" panel on the Analyzer detail page, gated on both a bankroll being set *and* the toggle being on. Mock-only, same scope boundary as tracker/alerts/watchlist below - Prisma's `Bankroll` model exists but stays unwired.
 - `zod`-based input validation on every API route that accepts a body (`lib/api/schemas.ts`, `lib/api/error.ts`'s new `parseBody()`) - see "Accessibility, security & performance" above for what this actually caught (an alert's `conditionType` accepted any string forever, preferences accepted anything at all, several numeric fields silently produced `NaN`).
 - Cross-process alert evaluation - a real ingestion tick now triggers evaluation too, not just a local one. See "Alert evaluation" above for both the fix and a real Next.js architecture constraint (`instrumentation.ts` doesn't share module state with route handlers) discovered while building it.

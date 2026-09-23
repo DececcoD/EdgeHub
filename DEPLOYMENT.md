@@ -105,9 +105,15 @@ already committed, it never generates them.
 
 ## CI
 
-`.github/workflows/ci.yml` runs lint, typecheck, the full test suite, and a
-production build on every push/PR to `main`. It needs zero secrets - same
-"defaults to mock, needs nothing" property as local dev.
+`.github/workflows/ci.yml` has two jobs. `build-and-test` runs lint,
+typecheck, the full unit test suite, and a production build on every
+push/PR to `main`. `e2e` runs after it passes, installs Playwright's
+Chromium binary (`npx playwright install --with-deps`), and runs the 50-spec
+suite in `e2e/` against a real production server that job builds and starts
+itself - see README.md's "End-to-end tests" section for what it covers. On
+failure it uploads the HTML Playwright report as a build artifact. Neither
+job needs any secrets - same "defaults to mock, needs nothing" property as
+local dev.
 
 This repo is now pushed to GitHub, and CI has actually run - not a
 theoretical claim. The very first run **failed**, on the `lint` step,

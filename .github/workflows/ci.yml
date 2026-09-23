@@ -28,3 +28,30 @@ jobs:
       - run: npm test
 
       - run: npm run build
+
+  e2e:
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - run: npm ci
+
+      - run: npx playwright install --with-deps chromium
+
+      # playwright.config.ts's webServer runs `npm run build && npm run
+      # start` itself - always a production server, never `next dev` (dev
+      # mode's HMR needs `eval()`, which the app's CSP deliberately blocks).
+      - run: npm run test:e2e
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
