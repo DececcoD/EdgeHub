@@ -23,9 +23,10 @@ its first query. Fixed by installing `openssl` explicitly in both the
 real-mode run above actually succeeding.
 
 What's still never been run against a real *cloud* provider - only a local
-container: managed Postgres (RDS/Supabase/etc.), a real CI run (this repo
-isn't pushed to GitHub yet), and of course Clerk/Stripe/The Odds API, which
-need real accounts that can't be created in this environment.
+container: managed Postgres (RDS/Supabase/etc.), and of course
+Clerk/Stripe/The Odds API, which need real accounts that can't be created
+in this environment. A real CI run has happened, though - see "CI" below
+for what that actually caught.
 
 Real-time push (`lib/realtime/bus.ts`) got the same treatment: a real
 multi-tab Playwright run confirmed the in-process default actually pushes
@@ -106,10 +107,28 @@ already committed, it never generates them.
 
 `.github/workflows/ci.yml` runs lint, typecheck, the full test suite, and a
 production build on every push/PR to `main`. It needs zero secrets - same
-"defaults to mock, needs nothing" property as local dev. **This repo isn't
-a git repository yet** (see project status) - the workflow file is ready
-the moment it's pushed to a GitHub repo with Actions enabled; it does
-nothing on its own until then.
+"defaults to mock, needs nothing" property as local dev.
+
+This repo is now pushed to GitHub, and CI has actually run - not a
+theoretical claim. The very first run **failed**, on the `lint` step,
+which caught two real gaps that type-checking alone never would have:
+ESLint had never actually been configured for this project (`next lint`
+was hitting its interactive first-run setup prompt, which just hangs/fails
+non-interactively in CI) - neither `eslint` nor `eslint-config-next` were
+even installed. Fixed by installing both (pinned to `eslint@8` +
+`eslint-config-next@14.2.35`, matching the Next version - Next 14's
+"Strict" preset needs ESLint 8's classic config format, not 9's flat
+config) and adding `.eslintrc.json` (`{ "extends": "next/core-web-vitals" }`)
+directly rather than answering the interactive prompt. That surfaced 24
+real `react/no-unescaped-entities` errors (raw `'`/`"` inside JSX text
+across 11 files, mostly this project's own quoted phrases like "lock" and
+contractions like "sportsbook's") - fixed by replacing them with
+`&apos;`/`&quot;`, not by disabling the rule. Verified the fix renders
+correctly, not just that it compiles: checked the actual served HTML for
+one of the entity-escaped pages and confirmed the browser-facing output is
+the correct escaped form (`&quot;`/`&#x27;`), which every browser renders
+as a normal `"`/`'`. `npm run lint` now passes cleanly, and the full
+CI sequence (lint → typecheck → test → build) passes locally end to end.
 
 ## Moving to real data, in order
 

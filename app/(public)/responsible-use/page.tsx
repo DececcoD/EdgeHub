@@ -16,7 +16,7 @@ export default function ResponsibleUsePage() {
         <li>EdgeHub notification copy never uses urgency, loss-chasing language, or streak framing.</li>
       </ul>
       <p>
-        Nothing on EdgeHub is a "lock," a guaranteed outcome, or advice to wager. Every probability shown is an
+        Nothing on EdgeHub is a &quot;lock,&quot; a guaranteed outcome, or advice to wager. Every probability shown is an
         estimate with disclosed uncertainty, and the decision to act on it - or not - is always yours.
       </p>
     </DocPage>

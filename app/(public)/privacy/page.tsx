@@ -6,7 +6,7 @@ export default function PrivacyPage() {
   return (
     <DocPage title="Privacy" version="v1.0 (draft - pending counsel review)">
       <p>
-        This page describes EdgeHub's intended data practices for the prototype/beta phase. It is not yet a final
+        This page describes EdgeHub&apos;s intended data practices for the prototype/beta phase. It is not yet a final
         legal document - specialized U.S. counsel review of the full data map, retention schedule, and deletion
         workflow is required before public launch.
       </p>

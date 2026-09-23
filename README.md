@@ -29,7 +29,8 @@ What's mocked and clearly marked as such in code comments:
 
 ```bash
 npm install
-npm test        # 84 tests: golden vectors, mock store invariants, CSV validator, AI schema, odds-provider adapter + identity resolution
+npm run lint     # ESLint (next/core-web-vitals) - also runs in CI
+npm test         # 104 tests: golden vectors, mock store invariants, CSV validator, AI schema, odds-provider adapter, identity resolution, circuit breaker, alert evaluation, rate limiting, zod body validation
 npm run dev      # http://localhost:3000
 ```
 
@@ -69,7 +70,7 @@ The core design principle, mirroring the auth security fix: **the webhook is the
 
 What's built: `lib/billing/stripe.ts` (client singleton), `lib/billing/subscription-store.ts` (Postgres-backed Stripe customer/subscription state), `lib/billing/checkout.ts` (`createCheckoutSession` / `createPortalSession`), `app/api/webhooks/stripe/route.ts` (`checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.payment_failed`), and `app/api/v1/account/{checkout,billing-portal}/route.ts`. `components/account/plan-selector.tsx` branches on `lib/billing/client-mode.ts`: mock mode keeps the original direct-PATCH buttons unchanged; Stripe mode routes upgrades through Checkout, routes downgrades-to-free and a new "Manage billing" button through the Stripe-hosted Portal, and surfaces errors inline instead of failing silently.
 
-**Not integration-tested against a real Stripe account** - there's no way to create Checkout/Portal sessions or receive webhooks without live keys in this environment. Verified by: type-checking every call against the actual installed SDK's type definitions, the full test suite (84 tests) passing unchanged, a production build succeeding with both new routes registered, and a Playwright smoke test confirming mock mode is completely unchanged (no "Manage billing" button appears, the mock subtitle text is unchanged, and switching plans via the original PATCH path still works exactly as before).
+**Not integration-tested against a real Stripe account** - there's no way to create Checkout/Portal sessions or receive webhooks without live keys in this environment. Verified by: type-checking every call against the actual installed SDK's type definitions, the full test suite passing unchanged, a production build succeeding with both new routes registered, and a Playwright smoke test confirming mock mode is completely unchanged (no "Manage billing" button appears, the mock subtitle text is unchanged, and switching plans via the original PATCH path still works exactly as before).
 
 **Still needed before this can go live:** a real Stripe account, products/prices for Pro and Elite (`STRIPE_PRICE_ID_PRO`/`STRIPE_PRICE_ID_ELITE`), a webhook endpoint pointed at `/api/webhooks/stripe` for `STRIPE_WEBHOOK_SECRET`, and a decision on how existing mock-plan users are migrated onto real Stripe customers the first time `BILLING_PROVIDER=stripe` is flipped on (today `ensureStripeCustomer()` just creates a fresh Stripe customer for anyone who doesn't have one yet - it doesn't reconcile a pre-existing mock `plan` value).
 

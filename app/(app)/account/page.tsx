@@ -20,7 +20,7 @@ export default async function AccountPage() {
         <PanelHeader title="Responsible use" subtitle="Section 12.2 - self-set limits, no coercive copy" />
         <div className="flex flex-col gap-2 p-4 text-sm">
           <p className="text-paper-muted dark:text-ink-muted">
-            EdgeHub never places wagers and never guarantees an outcome. If you'd like a break from alerts and
+            EdgeHub never places wagers and never guarantees an outcome. If you&apos;d like a break from alerts and
             opportunity notifications, you can pause your account at any time - your tracker history is kept, nothing
             is deleted.
           </p>

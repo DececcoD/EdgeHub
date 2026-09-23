@@ -99,7 +99,7 @@ export function CreateAlertForm({ defaultSubjectId, defaultSubjectLabel }: { def
           </select>
         </label>
         <p className="rounded-xs bg-paper-50 px-3 py-2 text-xs text-paper-muted dark:bg-ink-800 dark:text-ink-muted">
-          You'll be notified at most once per condition change, respecting quiet hours (11pm-7am local by default). No
+          You&apos;ll be notified at most once per condition change, respecting quiet hours (11pm-7am local by default). No
           urgency language, no loss-chasing prompts - just the fact and a link back to the current market state.
         </p>
         <div className="flex items-center gap-2">
@@ -109,7 +109,7 @@ export function CreateAlertForm({ defaultSubjectId, defaultSubjectLabel }: { def
           <Button variant="ghost" type="button" onClick={() => setOpen(false)}>
             Cancel
           </Button>
-          {status === "error" && <span className="text-xs text-risk-text">Could not save - check your plan's alert limit.</span>}
+          {status === "error" && <span className="text-xs text-risk-text">Could not save - check your plan&apos;s alert limit.</span>}
         </div>
       </form>
     </Panel>

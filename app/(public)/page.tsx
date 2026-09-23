@@ -87,7 +87,7 @@ export default async function LandingPage() {
           <h2 className="font-display text-2xl font-semibold">What EdgeHub is not</h2>
           <p className="mt-3 text-sm text-paper-muted dark:text-ink-muted">
             Not a sportsbook or exchange. Not a way to place or copy wagers. Not a custodian of your money. Not a
-            source of guaranteed picks or "locks." Every number here is a probability-based read of public market
+            source of guaranteed picks or &quot;locks.&quot; Every number here is a probability-based read of public market
             data, timestamped and explained - the decision, and the risk, stay yours.
           </p>
           <p className="mt-6 font-mono tabular text-xs text-caution-text">

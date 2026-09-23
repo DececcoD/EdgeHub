@@ -13,7 +13,7 @@ export default function TermsPage() {
       <h2 className="font-display text-lg font-semibold">No guarantee of outcome</h2>
       <p>
         All probabilities, edges, expected-value figures, and scores are estimates derived from public market data
-        and disclosed calculation methods. Nothing on EdgeHub is a "lock," a certainty, or a guarantee of profit or
+        and disclosed calculation methods. Nothing on EdgeHub is a &quot;lock,&quot; a certainty, or a guarantee of profit or
         result, for a single event or in aggregate.
       </p>
       <h2 className="font-display text-lg font-semibold">Eligibility</h2>

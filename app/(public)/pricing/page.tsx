@@ -40,7 +40,7 @@ export default function PricingPage() {
       </div>
 
       <p className="mt-8 text-xs text-paper-muted dark:text-ink-muted">
-        "Near-real-time" is governed by provider rights, polling quotas, processing latency and product SLA - never
+        &quot;Near-real-time&quot; is governed by provider rights, polling quotas, processing latency and product SLA - never
         marketed as instantaneous.
       </p>
     </div>

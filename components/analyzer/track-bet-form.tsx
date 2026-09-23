@@ -119,7 +119,7 @@ export function TrackBetForm({
           Cancel
         </Button>
         {status === "done" && <span className="text-xs text-signal-text">Saved to your tracker.</span>}
-        {status === "error" && <span className="text-xs text-risk-text">Could not save - check your plan's bet limit.</span>}
+        {status === "error" && <span className="text-xs text-risk-text">Could not save - check your plan&apos;s bet limit.</span>}
       </div>
     </form>
   );
