@@ -30,7 +30,7 @@ What's mocked and clearly marked as such in code comments:
 ```bash
 npm install
 npm run lint     # ESLint (next/core-web-vitals) - also runs in CI
-npm test         # 108 tests: golden vectors, mock store invariants, CSV validator, AI schema, odds-provider adapter, identity resolution, circuit breaker, alert evaluation, rate limiting, zod body validation, bankroll settings
+npm test         # 131 tests: golden vectors, mock store invariants, CSV validator, AI schema, odds-provider adapter, identity resolution, circuit breaker, alert evaluation, rate limiting, zod body validation, bankroll settings, Kalshi/Polymarket adapters
 npm run dev      # http://localhost:3000
 ```
 
@@ -120,12 +120,25 @@ The admin console used to be reachable by anyone with a session (mock or real), 
 
 **Live-tested in mock mode**, not just type-checked: a Playwright run confirmed the demo account still reaches `/admin` (200, full panel visible) while a freshly signed-up account - `role` defaulting to `"user"` - gets a real 404. The MFA check itself is not integration-tested, same reason as every other real-Clerk-mode path in this project: no live Clerk project to test against here. The Postgres migration adding the `role` column (`prisma/migrations/20260922014747_add_user_role/`) was hand-written (Docker's daemon was stuck when this was built) rather than generated against a live database like every other migration - but unlike that gap staying open, it got closed the same day: once Docker recovered, `prisma migrate deploy` against a fresh container applied it cleanly, retroactively confirming the hand-written SQL was correct.
 
+### Prediction-market adapters (Phase 2 groundwork, Section 15.2/Appendix C)
+
+The PRD's own framing for this: **"Kalshi/Polymarket adapters designed now; UI launched after legal/data review."** So that's exactly the boundary here - `lib/providers/kalshi/` and `lib/providers/polymarket/` are real, tested, read-only adapters (client + normalizer, mirroring `lib/providers/the-odds-api/`'s own pattern), but nothing in the running app calls them: no ingestion pipeline wiring, no Postgres schema, no UI. Building further than the adapter layer would be building ahead of the PRD's stated gate (legal review of the prediction-market roadmap - see `DECISIONS.md`), not closing a gap.
+
+Both providers' market-data reads are confirmed public/unauthenticated - no API key needed, unlike The Odds API. Kalshi's client defaults to their **demo** environment host, not production, matching the PRD's own "demo-first testing" direction; Polymarket has no separate demo network (order-book/price reads are public regardless of trading), so its client points at the one real dataset.
+
+Every field name and endpoint shape here was verified directly against each provider's current published docs (2026-09-23), not assumed from training knowledge - the same discipline this project has needed for Clerk and Stripe elsewhere, since a wrong field name here fails silently at runtime, not at compile time. Two real, non-obvious things that verification caught:
+- **Kalshi's order book returns bids only, for both sides.** There's no separate "asks" array on either the Yes or No side - a bid for Yes at price X is equivalent to an ask for No at (1 - X), per Kalshi's own docs. `lib/providers/kalshi/normalize.ts`'s `normalizeOrderbook()` reports this as-is rather than deriving a synthetic ask side.
+- **Polymarket's `outcomes`/`outcomePrices`/`clobTokenIds` fields are JSON-encoded strings, not arrays** - each needs its own `JSON.parse()` before the index-aligned zip that maps a CLOB token ID to its outcome label and price. Getting this wrong would have been a silent bug (string indexing character-by-character), not a type error.
+
+Kalshi's scalar markets (a continuous-value resolution, not discrete Yes/No) and any Polymarket market whose three parallel arrays don't parse to equal lengths are skipped with a warning rather than guessed at - same "warn, don't fabricate" convention `the-odds-api/normalize.ts` already established for unmapped outcome names. 23 unit tests against fixtures built field-by-field from each provider's real documented schema (no example payloads are published on Kalshi's docs; Polymarket's fixture reuses their own published example for the JSON-encoded-string fields).
+
 ## Project layout
 
 ```
 lib/calc/       Pure calculation engine (Section 6) + golden-vector tests
 lib/mock/       Seeded fixture data + query API (the default data source - USE_MOCK_DATA=true)
-lib/providers/  Real odds-provider adapters (The Odds API client, types, normalizer)
+lib/providers/  Real odds-provider adapter (The Odds API), plus Phase 2 groundwork:
+                read-only, unwired Kalshi/Polymarket adapters (see "Prediction-market adapters" above)
 lib/ingest/     Identity resolution + ingestion pipeline writing to Postgres (Section 7.3) - run via `npm run ingest`.
                 recompute.ts persists ConsensusSnapshot/OpportunitySnapshot lineage rows after each run.
                 circuit-breaker.ts (Section 11.2) skips a run entirely after repeated provider failures.
@@ -178,10 +191,11 @@ A real audit, not a checklist claim - automated where a tool exists, live-verifi
 ## Known gaps vs. the full PRD
 
 Deliberately out of scope for this pass (flagged, not forgotten):
-- Kalshi/Polymarket adapters (Phase 2, intentionally gated per the PRD).
+- Kalshi/Polymarket **UI, market matching, and prediction portfolio** (Phase 2, intentionally gated per the PRD - the read-only adapters themselves are built, see below and "Prediction-market adapters" below).
 - Native mobile/PWA, arbitrage scanner, backtesting (Phase 3+, intentionally gated).
 
 Closed since the last pass:
+- Kalshi/Polymarket read-only adapters (Phase 2 groundwork - see "Prediction-market adapters" below for what's built and what's still gated).
 - A committed end-to-end test suite (`e2e/`, see "End-to-end tests" above) - every feature before this was verified with a one-off Playwright script written and discarded during the pass that built it, so nothing guarded against future regressions. Now runs in CI on every push/PR.
 - Bankroll input feature (Section 6.4) - previously only the pure Kelly-sizing math existed (`lib/calc/kelly.ts`), with no UI or storage for a user to actually set a bankroll. Now built: an Account settings panel (`components/account/bankroll-form.tsx`) to set a starting amount, max-stake percentage (capped at the mandatory 2%), and an off-by-default toggle for showing sizing guidance; `app/api/v1/account/bankroll/route.ts` (GET/PATCH/DELETE); and a "Suggested stake size" panel on the Analyzer detail page, gated on both a bankroll being set *and* the toggle being on. Mock-only, same scope boundary as tracker/alerts/watchlist below - Prisma's `Bankroll` model exists but stays unwired.
 - `zod`-based input validation on every API route that accepts a body (`lib/api/schemas.ts`, `lib/api/error.ts`'s new `parseBody()`) - see "Accessibility, security & performance" above for what this actually caught (an alert's `conditionType` accepted any string forever, preferences accepted anything at all, several numeric fields silently produced `NaN`).
