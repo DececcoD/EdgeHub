@@ -38,7 +38,7 @@ Mirrors the PRD's own Decision Log format (Section 16.2, "Founder Decisions Requ
 |---|---|---|---|---|
 | 1 | Final product name/domain | **Open** | See "Name & domain" below. No blocking collision found in a preliminary search, but formal USPTO clearance is still required. | Founder + trademark counsel |
 | 2 | Odds data provider | **Open** | See "Odds provider" below. The Odds API's Business tier ($99/mo) is the strongest low-cost fit for MVP scope - contingent on confirming display/redistribution rights directly with them. Outreach drafted: [`COVER_EMAIL_ODDS_PROVIDERS.md`](./COVER_EMAIL_ODDS_PROVIDERS.md) - ready to send now (this is the one outreach round not deferred to a later phase, since it blocks Phase 1's real ingestion pipeline). | Founder |
-| 3 | Gaming-law counsel engagement | **Open** | Not started. Needed before any public launch, ideally before finalizing provider/jurisdiction. | Founder |
+| 3 | Gaming-law counsel engagement | **Open** (outreach sent) | Tier 1 RFP emails and the separate prediction-market exploratory emails sent 2026-09-23 (see "3-4. Counsel and jurisdiction" below). Awaiting firm responses - not yet engaged/selected. | Founder |
 | 4 | Launch jurisdiction(s) | **Open** | Not started - depends on counsel input. | Founder + counsel |
 | 5 | Free/Pro/Elite pricing | **Open** (defaulted) | Code currently implements the PRD's own default: $0 / $24.99 / $59.99. Needs an explicit go/no-go, not just inheriting the default. | Founder |
 | 6 | Bankroll input policy | **Open** (defaulted) | Built: optional per-user starting bankroll + max-stake% + off-by-default Kelly sizing toggle, in `app/(app)/account`. Mock-only (in-memory), same scope boundary as tracker/alerts/watchlist - the `notesEncrypted`-style retention/encryption question doesn't yet apply since there's no real Postgres write path for it. Needs sign-off on whether that persistence model is acceptable before wiring to real storage. | Founder |
@@ -84,18 +84,16 @@ Comparison researched 2026-09-20 against the PRD's exact MVP scope: NFL/NBA/MLB/
 
 RFP drafted: see [`COUNSEL_RFP.md`](./COUNSEL_RFP.md) - ready to customize and send to prospective firms. Covers product/regulatory classification, state-availability analysis, marketing-claims review, affiliate compliance, policy-document review, data-licensing review, responsible-gambling requirements, and a separately-scoped question on the Kalshi/Polymarket prediction-market roadmap (flagged as possibly needing different counsel, since it's a CFTC/derivatives question rather than a state-gambling-law one).
 
-Candidate firms researched: see [`COUNSEL_CANDIDATES.md`](./COUNSEL_CANDIDATES.md) - tiered shortlist (affiliate/software-provider fit vs. large gaming-law generalists vs. CFTC/prediction-market specialists), not yet contacted.
+Candidate firms researched: see [`COUNSEL_CANDIDATES.md`](./COUNSEL_CANDIDATES.md) - tiered shortlist (affiliate/software-provider fit vs. large gaming-law generalists vs. CFTC/prediction-market specialists).
 
 Cover emails drafted:
 - [`COVER_EMAIL_TIER1.md`](./COVER_EMAIL_TIER1.md) - base template + a firm-specific paragraph per Tier 1 candidate (affiliate/software-provider fit).
 - [`COVER_EMAIL_TIER2.md`](./COVER_EMAIL_TIER2.md) - same base ask, reframed around regulatory depth (state-reg drafting, compliance-committee experience) since these firms' fit is operator-side rather than affiliate-side; adds an upfront fixed-fee ask given likely higher pricing.
 - [`COVER_EMAIL_PREDICTION_MARKETS.md`](./COVER_EMAIL_PREDICTION_MARKETS.md) - narrower, exploratory-only email (no RFP attached) for the CFTC/prediction-market specialists, since that's a gated Phase 2 item, not a launch blocker. Includes a separate dual-scope variant for Sidley Austin, the one firm that could plausibly handle both the core-product work and this question.
 
-Recommended sequencing (per `COUNSEL_CANDIDATES.md`): send Tier 1 first, only escalate to Tier 2 if none of those four pan out on fit/price/availability. Hold the prediction-market emails until the Kalshi/Polymarket integration is an active roadmap item - they're drafted and ready, not meant to go out yet.
+**Update (2026-09-23): both the Tier 1 gaming-law RFP emails and the prediction-market outreach emails have been sent** (confirmed by the founder - sent by them directly, since this environment has no email-sending capability). Tier 2 was not part of this round - per the original recommended sequencing, only escalate to Tier 2 if none of the Tier 1 firms pan out on fit/price/availability.
 
-**Note (2026-09-23):** the Kalshi/Polymarket read-only adapters are now built (see the progress note below) - that's the engineering side of "designed now" per the PRD's own framing, not the legal side. The prediction-market counsel emails above are still not sent (no email-sending capability here, and this is squarely a business decision, not a technical one) - but building the adapters is a real, concrete signal that this workstream is now active, worth weighing when deciding whether to send them.
-
-Still open: actually reaching out (I have no email-sending capability - this needs you or someone on your team to send it), selecting a firm, and logging the engagement here once scoped.
+Still open: firm responses, selecting a firm, and logging the engagement here once scoped.
 
 ## 5-8. Pricing, bankroll, settlement, AI launch
 
