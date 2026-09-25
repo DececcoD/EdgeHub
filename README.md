@@ -30,7 +30,7 @@ What's mocked and clearly marked as such in code comments:
 ```bash
 npm install
 npm run lint     # ESLint (next/core-web-vitals) - also runs in CI
-npm test         # 148 tests: golden vectors, mock store invariants, CSV validator, AI schema, odds-provider adapter, identity resolution, circuit breaker, alert evaluation, rate limiting, zod body validation, bankroll settings, Kalshi/Polymarket adapters, observability (logger/error-capture), email alert delivery
+npm test         # 153 tests: golden vectors, mock store invariants, CSV validator, AI schema, odds-provider adapter, identity resolution, circuit breaker, alert evaluation, rate limiting, zod body validation, bankroll settings, Kalshi/Polymarket adapters, observability (logger/error-capture), email alert delivery, audit logging
 npm run dev      # http://localhost:3000
 ```
 
@@ -158,6 +158,14 @@ Verified directly against Resend's live docs rather than assumed: the current SD
 
 **Live-verified with a real network call**, not just mocked: created a real alert via the API with `channel: "email"`, triggered a tick, and with `RESEND_API_KEY` unset confirmed the clean structured no-op log (`alert_email_skipped_not_configured`); then restarted with a syntactically-valid-but-fake `RESEND_API_KEY` and repeated - this one actually reached Resend's real API over the network and got back a real `"API key is invalid"` response, which was caught, logged, and reported through the Sentry seam without crashing anything - the server stayed healthy and the alert-firing flow completed normally either way. 9 new unit tests (mocking the Resend SDK) plus 2 new `evaluateAlerts()` tests confirming the channel branch. **Not verified**: actual delivery to a real inbox - no Resend account exists in this environment, same disclosed-gap pattern as Stripe/Clerk/Sentry.
 
+### Audit logging (Section 11.1/12.2)
+
+`AuditLog` has been a real Prisma model since this project's schema was first written, but nothing anywhere ever called `prisma.auditLog.create()` - documented-but-unwired, the same state the `Bankroll` model was in before Section 6.4 got built. The PRD names "Audit" as its own dedicated admin module (Section 11.1: "Immutable admin actions, exports, sign-ins, overrides, and data corrections") and lists audit logging as a required security control alongside CSP/CSRF/dependency scanning (Section 12.2) - real, repeatedly-emphasized MVP scope, not something deferred.
+
+`lib/audit/log.ts`'s `recordAuditLog()` now gets called from the two real Postgres write paths that exist in this app: the Stripe webhook (a plan change - real money/entitlement changing hands) and the Clerk webhook (`user.created`/`user.updated`). Real-mode only, same reasoning `lib/auth/require-admin.ts` already gives for why mock mode has no MFA story either - a demo account's mock actions aren't real security events to audit. The admin console's new "Audit log" panel reads it back, mirroring the existing "Provider health" panel's own mock/real disclosure pattern rather than pretending mock mode has something to show.
+
+`beforeHash`/`afterHash` (not raw before/after state) is the schema's own pre-existing design: a SHA-256 digest of the JSON-serialized state proves *what changed* without duplicating potentially sensitive data (email addresses, plan/billing details) a second time in a log table that may end up with different retention/access rules than the primary tables. Takes an explicit `PrismaClient` param rather than the module singleton, matching `lib/ingest/circuit-breaker.ts`'s own convention, so the write shape/hashing logic is unit-testable against a fake Prisma - the real query itself isn't live-tested against an actual Postgres in this pass (Docker's daemon was unresponsive when this was built, the same intermittent issue this project has hit and closed before once Docker recovered - see DECISIONS.md). Never throws: a failed audit write can't block the real operation it's describing, matching `lib/notifications/email.ts`'s own "best effort" contract. 5 new unit tests.
+
 ## Project layout
 
 ```
@@ -185,6 +193,7 @@ middleware.ts   Clerk route protection (no-op in mock mode) + the CSP header (Se
 lib/security/   Rate limiting (Section 14) - in-process only, see rate-limit.ts's header
 lib/observability/  Structured logging (always on) + the Sentry error-capture seam, gated on SENTRY_DSN - see "Observability & error tracking" above
 lib/notifications/  Email alert delivery via Resend, gated on RESEND_API_KEY - see "Email alert delivery" above
+lib/audit/      Audit log writer (real-mode only) - see "Audit logging" above
 instrumentation.ts, instrumentation-client.ts, sentry.*.config.ts, app/global-error.tsx  Sentry SDK wiring - see "Observability & error tracking" above
 lib/api/        error.ts's apiError/parseBody (shared response shape + zod-validated body parsing) + schemas.ts (every route's body schema)
 app/api/webhooks/clerk/   Clerk user.created/user.updated -> local `users` table sync
@@ -224,6 +233,7 @@ Deliberately out of scope for this pass (flagged, not forgotten):
 - Native mobile/PWA, arbitrage scanner, backtesting (Phase 3+, intentionally gated).
 
 Closed since the last pass:
+- Audit logging (Section 11.1/12.2) - see "Audit logging" above. The `AuditLog` Prisma model existed since this schema was first written but nothing ever wrote to it; the PRD names it as its own dedicated admin module and a required security control.
 - Email alert delivery (Section 10.2) - see "Email alert delivery" above. The PRD requires this at MVP; the `channel: "email"` option existed in the UI/schema but was 100% decorative until now.
 - Error tracking/observability - see "Observability & error tracking" above. No error tracking or structured logging existed anywhere before this; 5 files had raw, inconsistent `console.*` calls and there was no global error boundary at all.
 - Kalshi/Polymarket read-only adapters (Phase 2 groundwork - see "Prediction-market adapters" below for what's built and what's still gated).

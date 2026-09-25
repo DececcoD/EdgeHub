@@ -28,6 +28,12 @@ export async function findUserIdByStripeCustomerId(stripeCustomerId: string): Pr
   return sub?.userId ?? null;
 }
 
+/** The plan a user is on right now, before a webhook-driven sync changes it - used to give the audit trail a real before/after, not just an after. */
+export async function getCurrentPlan(userId: string): Promise<Plan | null> {
+  const sub = await prisma.subscription.findUnique({ where: { userId } });
+  return (sub?.plan as Plan | undefined) ?? null;
+}
+
 /**
  * The webhook's main write path: reconciles our local Subscription row with
  * what Stripe reports as the current state of a subscription. Called from

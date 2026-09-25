@@ -10,8 +10,10 @@
  */
 import Stripe from "stripe";
 import { getStripeClient } from "@/lib/billing/stripe";
-import { findUserIdByStripeCustomerId, syncSubscriptionFromStripe } from "@/lib/billing/subscription-store";
+import { findUserIdByStripeCustomerId, getCurrentPlan, syncSubscriptionFromStripe } from "@/lib/billing/subscription-store";
 import { captureException, captureMessage } from "@/lib/observability/capture";
+import { recordAuditLog } from "@/lib/audit/log";
+import { prisma } from "@/lib/db/prisma";
 import type { Plan } from "@/lib/types";
 
 function planFromMetadata(metadata: Stripe.Metadata): Plan | null {
@@ -34,6 +36,8 @@ async function syncFromSubscriptionObject(subscription: Stripe.Subscription, fal
   const firstItem = subscription.items.data[0];
   const currentPeriodEnd = firstItem ? new Date(firstItem.current_period_end * 1000) : null;
 
+  const previousPlan = await getCurrentPlan(userId);
+
   await syncSubscriptionFromStripe({
     userId,
     plan,
@@ -41,6 +45,19 @@ async function syncFromSubscriptionObject(subscription: Stripe.Subscription, fal
     stripeSubscriptionId: subscription.id,
     status: subscription.status,
     currentPeriodEnd
+  });
+
+  // PRD Section 12.2: audit logging is a required security control. A plan
+  // change is real money/entitlement changing hands - exactly the kind of
+  // event worth a tamper-evident trail, not just the webhook's own success log.
+  await recordAuditLog(prisma, {
+    actorType: "system",
+    actorId: userId,
+    action: "plan_synced",
+    objectType: "subscription",
+    objectId: subscription.id,
+    before: previousPlan ? { plan: previousPlan } : undefined,
+    after: { plan, status: subscription.status }
   });
 }
 

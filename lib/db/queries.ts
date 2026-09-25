@@ -416,6 +416,33 @@ export async function listLeagues() {
   return leagues.map((l) => ({ key: l.key as LeagueKey, name: l.name }));
 }
 
+export interface AuditLogRow {
+  id: string;
+  actorType: string;
+  actorId: string | null;
+  action: string;
+  objectType: string;
+  objectId: string;
+  createdAt: string;
+}
+
+/** PRD Section 11.1's own dedicated "Audit" admin module: "Immutable admin
+ * actions, exports, sign-ins, overrides, and data corrections." Real-mode
+ * only - see lib/audit/log.ts's header for why mock mode has no
+ * equivalent, same reasoning already established for MFA. */
+export async function getRecentAuditLogs(limit = 25): Promise<AuditLogRow[]> {
+  const rows = await prisma.auditLog.findMany({ orderBy: { createdAt: "desc" }, take: limit });
+  return rows.map((row) => ({
+    id: row.id,
+    actorType: row.actorType,
+    actorId: row.actorId,
+    action: row.action,
+    objectType: row.objectType,
+    objectId: row.objectId,
+    createdAt: row.createdAt.toISOString()
+  }));
+}
+
 export async function getProviderHealth(): Promise<ProviderHealthRow[]> {
   const [rows, books] = await Promise.all([
     prisma.providerHealth.findMany({ include: { provider: true } }),

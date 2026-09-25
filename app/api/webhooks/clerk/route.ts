@@ -10,6 +10,7 @@ import type { NextRequest } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { createFromClerkUser } from "@/lib/db/user-profile";
 import { captureException, captureMessage } from "@/lib/observability/capture";
+import { recordAuditLog } from "@/lib/audit/log";
 
 export async function POST(request: NextRequest) {
   let event;
@@ -29,7 +30,16 @@ export async function POST(request: NextRequest) {
         captureMessage("Clerk user.created webhook had no email address - skipping local sync", { clerkUserId: event.data.id });
         return new Response("No email address on user", { status: 200 }); // 2xx: don't ask Clerk to retry a payload that will never have an email
       }
-      await createFromClerkUser({ clerkUserId: event.data.id, email: primaryEmail });
+      const created = await createFromClerkUser({ clerkUserId: event.data.id, email: primaryEmail });
+      // PRD Section 12.2: audit logging is a required security control.
+      await recordAuditLog(prisma, {
+        actorType: "system",
+        actorId: created.userId,
+        action: "user_created",
+        objectType: "user",
+        objectId: created.userId,
+        after: { email: primaryEmail }
+      });
     }
 
     if (event.type === "user.updated") {
@@ -37,7 +47,19 @@ export async function POST(request: NextRequest) {
         event.data.email_addresses.find((e) => e.id === event.data.primary_email_address_id)?.email_address ??
         event.data.email_addresses[0]?.email_address;
       if (primaryEmail) {
+        const existing = await prisma.user.findFirst({ where: { clerkUserId: event.data.id } });
         await prisma.user.updateMany({ where: { clerkUserId: event.data.id }, data: { email: primaryEmail } });
+        if (existing && existing.email !== primaryEmail) {
+          await recordAuditLog(prisma, {
+            actorType: "system",
+            actorId: existing.id,
+            action: "user_updated",
+            objectType: "user",
+            objectId: existing.id,
+            before: { email: existing.email },
+            after: { email: primaryEmail }
+          });
+        }
       }
     }
 

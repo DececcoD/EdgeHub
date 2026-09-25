@@ -1,21 +1,24 @@
 import { getFreshnessHealth, getProviderHealth, listMappingReviewItems, listMarkets } from "@/lib/data-source";
 import { getUserCount as getMockUserCount } from "@/lib/auth/user-store";
 import { getUserCount as getRealUserCount } from "@/lib/db/user-profile";
+import { getRecentAuditLogs, type AuditLogRow } from "@/lib/db/queries";
 import { getExplanationLogs } from "@/lib/ai/explain";
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { EmptyState, Metric, Panel, PanelHeader } from "@/components/ui/primitives";
 
 const IS_CLERK = process.env.AUTH_PROVIDER === "clerk";
+const USE_MOCK = process.env.USE_MOCK_DATA !== "false";
 
 export default async function AdminPage() {
   await requireAdmin();
 
-  const [health, mappingReview, providerHealth, markets, userCount] = await Promise.all([
+  const [health, mappingReview, providerHealth, markets, userCount, auditLogs] = await Promise.all([
     getFreshnessHealth(),
     listMappingReviewItems(),
     getProviderHealth(),
     listMarkets(),
-    IS_CLERK ? getRealUserCount() : Promise.resolve(getMockUserCount())
+    IS_CLERK ? getRealUserCount() : Promise.resolve(getMockUserCount()),
+    USE_MOCK ? Promise.resolve<AuditLogRow[]>([]) : getRecentAuditLogs()
   ]);
   const aiLogs = getExplanationLogs().slice(-10).reverse();
 
@@ -85,6 +88,43 @@ export default async function AdminPage() {
                   <td className="px-4 py-2 font-mono tabular text-xs">{row.lastSuccessAt ? new Date(row.lastSuccessAt).toLocaleString() : "-"}</td>
                   <td className={row.circuitBreakerOpen ? "px-4 py-2 text-risk-text" : "px-4 py-2"}>{row.circuitBreakerOpen ? "Open" : "Closed"}</td>
                   <td className="px-4 py-2 font-mono tabular">{row.consecutiveFailures}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Panel>
+
+      <Panel>
+        <PanelHeader
+          title="Audit log"
+          subtitle={
+            USE_MOCK
+              ? "Mock mode - no real audit trail; mock actions aren't real security events (see README.md's \"Admin access\")"
+              : "Real mode - immutable record of plan syncs and user sync events (Section 12.2/11.1)"
+          }
+        />
+        {USE_MOCK ? (
+          <EmptyState title="Not available in mock mode" description="Audit logging (Section 11.1) is a real-mode-only concern, same reasoning as the admin MFA check having no mock equivalent." />
+        ) : auditLogs.length === 0 ? (
+          <EmptyState title="No audit entries yet" description="Plan changes (Stripe webhook) and user sync events (Clerk webhook) will appear here." />
+        ) : (
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className="text-xs uppercase tracking-wide text-paper-muted dark:text-ink-muted">
+                <th className="px-4 py-2">When</th>
+                <th className="px-4 py-2">Actor</th>
+                <th className="px-4 py-2">Action</th>
+                <th className="px-4 py-2">Object</th>
+              </tr>
+            </thead>
+            <tbody>
+              {auditLogs.map((entry) => (
+                <tr key={entry.id} className="border-t border-paper-200 dark:border-ink-800">
+                  <td className="px-4 py-2 font-mono tabular text-xs">{new Date(entry.createdAt).toLocaleString()}</td>
+                  <td className="px-4 py-2 capitalize">{entry.actorType}{entry.actorId ? ` (${entry.actorId})` : ""}</td>
+                  <td className="px-4 py-2">{entry.action.replace(/_/g, " ")}</td>
+                  <td className="px-4 py-2 font-mono tabular text-xs">{entry.objectType}:{entry.objectId}</td>
                 </tr>
               ))}
             </tbody>
