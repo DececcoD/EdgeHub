@@ -122,7 +122,7 @@ The admin console used to be reachable by anyone with a session (mock or real), 
 
 ### Prediction-market adapters (Phase 2 groundwork, Section 15.2/Appendix C)
 
-The PRD's own framing for this: **"Kalshi/Polymarket adapters designed now; UI launched after legal/data review."** So that's exactly the boundary here - `lib/providers/kalshi/` and `lib/providers/polymarket/` are real, tested, read-only adapters (client + normalizer, mirroring `lib/providers/the-odds-api/`'s own pattern), but nothing in the running app calls them: no ingestion pipeline wiring, no Postgres schema, no UI. Building further than the adapter layer would be building ahead of the PRD's stated gate (legal review of the prediction-market roadmap - see `DECISIONS.md`), not closing a gap.
+The PRD's own framing for this: **"Kalshi/Polymarket adapters designed now; UI launched after legal/data review."** That legal review is now back (2026-09-24, DECISIONS.md items 3-4) - cleared to proceed, covering the prediction-market roadmap specifically, no jurisdiction restrictions or required copy changes. So the gate that kept this at the adapter layer only is now open; `lib/providers/kalshi/` and `lib/providers/polymarket/` are still just the read-only client + normalizer (mirroring `lib/providers/the-odds-api/`'s own pattern) as of this writing - the UI/market-matching/prediction-portfolio work described below hasn't started yet, not because it's still gated, but because it hasn't been picked up as its own pass.
 
 Both providers' market-data reads are confirmed public/unauthenticated - no API key needed, unlike The Odds API. Kalshi's client defaults to their **demo** environment host, not production, matching the PRD's own "demo-first testing" direction; Polymarket has no separate demo network (order-book/price reads are public regardless of trading), so its client points at the one real dataset.
 
@@ -229,7 +229,7 @@ A real audit, not a checklist claim - automated where a tool exists, live-verifi
 ## Known gaps vs. the full PRD
 
 Deliberately out of scope for this pass (flagged, not forgotten):
-- Kalshi/Polymarket **UI, market matching, and prediction portfolio** (Phase 2, intentionally gated per the PRD - the read-only adapters themselves are built, see below and "Prediction-market adapters" below).
+- Kalshi/Polymarket **UI, market matching, and prediction portfolio** (Phase 2 - legal review cleared this 2026-09-24, so it's no longer gated, just not yet built; the read-only adapters themselves are built, see "Prediction-market adapters" below).
 - Native mobile/PWA, arbitrage scanner, backtesting (Phase 3+, intentionally gated).
 
 Closed since the last pass:

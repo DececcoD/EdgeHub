@@ -44,8 +44,8 @@ Mirrors the PRD's own Decision Log format (Section 16.2, "Founder Decisions Requ
 |---|---|---|---|---|
 | 1 | Final product name/domain | **Open** | See "Name & domain" below. No blocking collision found in a preliminary search, but formal USPTO clearance is still required. | Founder + trademark counsel |
 | 2 | Odds data provider | **Open** | See "Odds provider" below. The Odds API's Business tier ($99/mo) is the strongest low-cost fit for MVP scope - contingent on confirming display/redistribution rights directly with them. Outreach drafted: [`COVER_EMAIL_ODDS_PROVIDERS.md`](./COVER_EMAIL_ODDS_PROVIDERS.md) - ready to send now (this is the one outreach round not deferred to a later phase, since it blocks Phase 1's real ingestion pipeline). | Founder |
-| 3 | Gaming-law counsel engagement | **Open** (outreach sent) | Tier 1 RFP emails and the separate prediction-market exploratory emails sent 2026-09-23 (see "3-4. Counsel and jurisdiction" below). Awaiting firm responses - not yet engaged/selected. | Founder |
-| 4 | Launch jurisdiction(s) | **Open** | Not started - depends on counsel input. | Founder + counsel |
+| 3 | Gaming-law counsel engagement | **Cleared** (2026-09-24) | Counsel review complete - cleared to proceed, covering both the core sportsbook product and the Kalshi/Polymarket prediction-market roadmap, no jurisdiction restrictions or required copy/disclosure changes. See "3-4. Counsel and jurisdiction" below. | Founder |
+| 4 | Launch jurisdiction(s) | **Cleared** (2026-09-24) | No jurisdiction exclusions required per counsel's review - not gated on state-by-state restriction. | Founder + counsel |
 | 5 | Free/Pro/Elite pricing | **Open** (defaulted) | Code currently implements the PRD's own default: $0 / $24.99 / $59.99. Needs an explicit go/no-go, not just inheriting the default. | Founder |
 | 6 | Bankroll input policy | **Open** (defaulted) | Built: optional per-user starting bankroll + max-stake% + off-by-default Kelly sizing toggle, in `app/(app)/account`. Mock-only (in-memory), same scope boundary as tracker/alerts/watchlist - the `notesEncrypted`-style retention/encryption question doesn't yet apply since there's no real Postgres write path for it. Needs sign-off on whether that persistence model is acceptable before wiring to real storage. | Founder |
 | 7 | Automatic settlement confidence threshold | **Open** (defaulted) | Built to require explicit confirmation unless result-mapping confidence is high; the actual threshold number is undefined. | Founder |
@@ -99,7 +99,9 @@ Cover emails drafted:
 
 **Update (2026-09-23): both the Tier 1 gaming-law RFP emails and the prediction-market outreach emails have been sent** (confirmed by the founder - sent by them directly, since this environment has no email-sending capability). Tier 2 was not part of this round - per the original recommended sequencing, only escalate to Tier 2 if none of the Tier 1 firms pan out on fit/price/availability.
 
-Still open: firm responses, selecting a firm, and logging the engagement here once scoped.
+**Update (2026-09-24): counsel review is back - cleared to proceed** (confirmed by the founder). Covers both the core sportsbook product and the Kalshi/Polymarket prediction-market roadmap - the "possibly needing different counsel" concern flagged above didn't end up requiring a separate engagement. No jurisdiction exclusions and no required copy/disclosure changes. Items 3 and 4 above are now marked Cleared rather than Open. This is also what unblocks the Phase 2 gate ("Kalshi/Polymarket adapters designed now; UI launched after legal/data review" - Appendix C) - see README.md's "Prediction-market adapters" section, which should be updated once that work actually starts.
+
+Still open: no further counsel action needed at this time - engagement details (which firm, fee structure) weren't specified when this update was logged; add them here if/when relevant.
 
 ## 5-8. Pricing, bankroll, settlement, AI launch
 
