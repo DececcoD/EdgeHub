@@ -20,6 +20,7 @@ import { getUserById } from "../auth/user-store";
 import { listAllActiveAlerts, markAlertTriggered, recordAlertEvent, setAlertStatus } from "../mock/user-data";
 import { decimalToImpliedProbability, americanToDecimal } from "../calc/odds";
 import { realtimeBus } from "../realtime/bus";
+import { sendAlertEmail } from "../notifications/email";
 import type { AlertDef } from "../types";
 
 const MOVEMENT_WINDOW_MINUTES = 60; // matches the create-alert form's own label: "moves within 60 minutes"
@@ -152,6 +153,20 @@ export async function evaluateAlerts(now: Date = new Date()): Promise<{ fired: n
       message: result.message,
       at: now.toISOString()
     });
+
+    // PRD 10.2: "Channels: in-app and email at MVP" - previously
+    // decorative, since nothing here ever branched on `channel`.
+    if (alert.channel === "email") {
+      const user = getUserById(alert.userId);
+      if (user) {
+        await sendAlertEmail({
+          to: user.email,
+          subjectLabel: alert.subjectLabel,
+          message: result.message,
+          triggeredAt: now.toISOString()
+        });
+      }
+    }
 
     fired += 1;
   }

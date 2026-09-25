@@ -30,7 +30,7 @@ What's mocked and clearly marked as such in code comments:
 ```bash
 npm install
 npm run lint     # ESLint (next/core-web-vitals) - also runs in CI
-npm test         # 140 tests: golden vectors, mock store invariants, CSV validator, AI schema, odds-provider adapter, identity resolution, circuit breaker, alert evaluation, rate limiting, zod body validation, bankroll settings, Kalshi/Polymarket adapters, observability (logger/error-capture)
+npm test         # 148 tests: golden vectors, mock store invariants, CSV validator, AI schema, odds-provider adapter, identity resolution, circuit breaker, alert evaluation, rate limiting, zod body validation, bankroll settings, Kalshi/Polymarket adapters, observability (logger/error-capture), email alert delivery
 npm run dev      # http://localhost:3000
 ```
 
@@ -148,6 +148,16 @@ What's wired: `instrumentation.ts` (server/edge init via Next's own `register()`
 
 Edge bundle size grew from 78.7 kB to 126 kB even with Sentry completely unconfigured - `instrumentation.ts` unconditionally imports `@sentry/nextjs` at module scope (needed for the always-exported `onRequestError`), and Next compiles `instrumentation.ts` for the edge runtime too (the same no-per-runtime-opt-out behavior this project found for `ioredis` earlier) - but unlike `ioredis`, `@sentry/nextjs` ships real edge-compatible exports (confirmed via its `package.json`'s `exports` map), so it resolves cleanly rather than breaking the build. Comfortably within any real platform's edge-function size limit, but a genuine, disclosed size cost of adding this at all.
 
+### Email alert delivery (Section 10.2)
+
+Previously decorative: `AlertDef.channel` has always accepted `"email"` (it's a real option in the create-alert form), but `lib/alerts/evaluate.ts` never branched on it - selecting Email did nothing different from In-app, silently. The PRD is explicit this is real MVP scope, not a later phase: **"Channels: in-app and email at MVP; push/SMS later"** (Section 10.2), with its own content requirements - "every message includes market identity, trigger evidence, timestamp, and manage-alert link" and "loss-chasing language and urgency pressure are prohibited."
+
+`lib/notifications/email.ts` sends via [Resend](https://resend.com) (no PRD-named provider for this, unlike Clerk/Stripe - a founder-level infra choice), gated on `RESEND_API_KEY` - the same zero-config-by-default seam as every other integration. `evaluateAlerts()` now calls it whenever a `channel: "email"` alert fires, using the same message/timestamp already generated for the in-app path and the alert owner's real email address. Content is HTML-escaped (the alert's `subjectLabel` is user-entered text - unescaped interpolation into an HTML email would be a real injection vector) and deliberately says only the fact plus a link back to `/alerts`, matching the neutral tone the in-app toast copy already committed to.
+
+Verified directly against Resend's live docs rather than assumed: the current SDK usage (`new Resend(apiKey)`, `resend.emails.send()` returning `{ data, error }` rather than throwing on an API-level failure), and that `onboarding@resend.dev` is their own documented sandbox From-address, usable with no custom domain/DNS verification - the default here.
+
+**Live-verified with a real network call**, not just mocked: created a real alert via the API with `channel: "email"`, triggered a tick, and with `RESEND_API_KEY` unset confirmed the clean structured no-op log (`alert_email_skipped_not_configured`); then restarted with a syntactically-valid-but-fake `RESEND_API_KEY` and repeated - this one actually reached Resend's real API over the network and got back a real `"API key is invalid"` response, which was caught, logged, and reported through the Sentry seam without crashing anything - the server stayed healthy and the alert-firing flow completed normally either way. 9 new unit tests (mocking the Resend SDK) plus 2 new `evaluateAlerts()` tests confirming the channel branch. **Not verified**: actual delivery to a real inbox - no Resend account exists in this environment, same disclosed-gap pattern as Stripe/Clerk/Sentry.
+
 ## Project layout
 
 ```
@@ -174,6 +184,7 @@ Dockerfile, docker-compose.yml, .github/workflows/ci.yml, DEPLOYMENT.md  Deploym
 middleware.ts   Clerk route protection (no-op in mock mode) + the CSP header (Section 14)
 lib/security/   Rate limiting (Section 14) - in-process only, see rate-limit.ts's header
 lib/observability/  Structured logging (always on) + the Sentry error-capture seam, gated on SENTRY_DSN - see "Observability & error tracking" above
+lib/notifications/  Email alert delivery via Resend, gated on RESEND_API_KEY - see "Email alert delivery" above
 instrumentation.ts, instrumentation-client.ts, sentry.*.config.ts, app/global-error.tsx  Sentry SDK wiring - see "Observability & error tracking" above
 lib/api/        error.ts's apiError/parseBody (shared response shape + zod-validated body parsing) + schemas.ts (every route's body schema)
 app/api/webhooks/clerk/   Clerk user.created/user.updated -> local `users` table sync
@@ -213,6 +224,7 @@ Deliberately out of scope for this pass (flagged, not forgotten):
 - Native mobile/PWA, arbitrage scanner, backtesting (Phase 3+, intentionally gated).
 
 Closed since the last pass:
+- Email alert delivery (Section 10.2) - see "Email alert delivery" above. The PRD requires this at MVP; the `channel: "email"` option existed in the UI/schema but was 100% decorative until now.
 - Error tracking/observability - see "Observability & error tracking" above. No error tracking or structured logging existed anywhere before this; 5 files had raw, inconsistent `console.*` calls and there was no global error boundary at all.
 - Kalshi/Polymarket read-only adapters (Phase 2 groundwork - see "Prediction-market adapters" below for what's built and what's still gated).
 - A committed end-to-end test suite (`e2e/`, see "End-to-end tests" above) - every feature before this was verified with a one-off Playwright script written and discarded during the pass that built it, so nothing guarded against future regressions. Now runs in CI on every push/PR.
