@@ -22,7 +22,7 @@ async function expectCleanLoad(page: Page, route: string) {
   expect(errors, `console/page errors on ${route}: ${errors.join(" | ")}`).toEqual([]);
 }
 
-const APP_ROUTES = ["/dashboard", "/markets", "/opportunities", "/tracker", "/portfolio", "/alerts", "/learn", "/account", "/admin"];
+const APP_ROUTES = ["/dashboard", "/markets", "/opportunities", "/predictions", "/tracker", "/portfolio", "/alerts", "/learn", "/account", "/admin"];
 
 const PUBLIC_ROUTES = ["/", "/pricing", "/calculator", "/faq", "/methodology", "/responsible-use", "/privacy", "/terms", "/login", "/signup"];
 

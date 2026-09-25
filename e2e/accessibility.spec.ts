@@ -23,6 +23,7 @@ const STATIC_ROUTES = [
   "/dashboard",
   "/markets",
   "/opportunities",
+  "/predictions",
   "/tracker",
   "/portfolio",
   "/alerts",

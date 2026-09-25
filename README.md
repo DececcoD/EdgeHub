@@ -30,7 +30,7 @@ What's mocked and clearly marked as such in code comments:
 ```bash
 npm install
 npm run lint     # ESLint (next/core-web-vitals) - also runs in CI
-npm test         # 153 tests: golden vectors, mock store invariants, CSV validator, AI schema, odds-provider adapter, identity resolution, circuit breaker, alert evaluation, rate limiting, zod body validation, bankroll settings, Kalshi/Polymarket adapters, observability (logger/error-capture), email alert delivery, audit logging
+npm test         # 164 tests: golden vectors, mock store invariants, CSV validator, AI schema, odds-provider adapter, identity resolution, circuit breaker, alert evaluation, rate limiting, zod body validation, bankroll settings, Kalshi/Polymarket adapters, observability (logger/error-capture), email alert delivery, audit logging, prediction-market matching
 npm run dev      # http://localhost:3000
 ```
 
@@ -120,9 +120,9 @@ The admin console used to be reachable by anyone with a session (mock or real), 
 
 **Live-tested in mock mode**, not just type-checked: a Playwright run confirmed the demo account still reaches `/admin` (200, full panel visible) while a freshly signed-up account - `role` defaulting to `"user"` - gets a real 404. The MFA check itself is not integration-tested, same reason as every other real-Clerk-mode path in this project: no live Clerk project to test against here. The Postgres migration adding the `role` column (`prisma/migrations/20260922014747_add_user_role/`) was hand-written (Docker's daemon was stuck when this was built) rather than generated against a live database like every other migration - but unlike that gap staying open, it got closed the same day: once Docker recovered, `prisma migrate deploy` against a fresh container applied it cleanly, retroactively confirming the hand-written SQL was correct.
 
-### Prediction-market adapters (Phase 2 groundwork, Section 15.2/Appendix C)
+### Prediction-market adapters (Phase 2, Section 15.2/Appendix C)
 
-The PRD's own framing for this: **"Kalshi/Polymarket adapters designed now; UI launched after legal/data review."** That legal review is now back (2026-09-24, DECISIONS.md items 3-4) - cleared to proceed, covering the prediction-market roadmap specifically, no jurisdiction restrictions or required copy changes. So the gate that kept this at the adapter layer only is now open; `lib/providers/kalshi/` and `lib/providers/polymarket/` are still just the read-only client + normalizer (mirroring `lib/providers/the-odds-api/`'s own pattern) as of this writing - the UI/market-matching/prediction-portfolio work described below hasn't started yet, not because it's still gated, but because it hasn't been picked up as its own pass.
+The PRD's own framing for this: **"Kalshi/Polymarket adapters designed now; UI launched after legal/data review."** That legal review is now back (2026-09-24, DECISIONS.md items 3-4) - cleared to proceed, covering the prediction-market roadmap specifically, no jurisdiction restrictions or required copy changes. `lib/providers/kalshi/` and `lib/providers/polymarket/` are the read-only client + normalizer (mirroring `lib/providers/the-odds-api/`'s own pattern); see "Prediction markets" below for the UI/matching layer built on top of them once the gate opened.
 
 Both providers' market-data reads are confirmed public/unauthenticated - no API key needed, unlike The Odds API. Kalshi's client defaults to their **demo** environment host, not production, matching the PRD's own "demo-first testing" direction; Polymarket has no separate demo network (order-book/price reads are public regardless of trading), so its client points at the one real dataset.
 
@@ -131,6 +131,18 @@ Every field name and endpoint shape here was verified directly against each prov
 - **Polymarket's `outcomes`/`outcomePrices`/`clobTokenIds` fields are JSON-encoded strings, not arrays** - each needs its own `JSON.parse()` before the index-aligned zip that maps a CLOB token ID to its outcome label and price. Getting this wrong would have been a silent bug (string indexing character-by-character), not a type error.
 
 Kalshi's scalar markets (a continuous-value resolution, not discrete Yes/No) and any Polymarket market whose three parallel arrays don't parse to equal lengths are skipped with a warning rather than guessed at - same "warn, don't fabricate" convention `the-odds-api/normalize.ts` already established for unmapped outcome names. 23 unit tests against fixtures built field-by-field from each provider's real documented schema (no example payloads are published on Kalshi's docs; Polymarket's fixture reuses their own published example for the JSON-encoded-string fields).
+
+### Prediction markets (Phase 2 build, `/predictions`)
+
+Built once the legal gate above cleared - a new screen comparing Kalshi vs. Polymarket prices for the same real-world question, the prediction-market analogue of comparing the same sportsbook outcome across FanDuel/DraftKings. Read-only, same as everywhere else in this app - nothing places a trade on either platform.
+
+**Deliberately mock-data-first**, the same bootstrapping path the sportsbook side itself took before its own real ingestion pipeline existed: `lib/predictions/mock-data.ts` is a small, hand-written seed set (not procedurally generated - a handful of realistic matched/unmatched markets is enough to exercise real matching logic and is easier to verify by hand), feeding the screen directly rather than through a real ingestion pipeline into Postgres. Building that pipeline for two more providers (identity resolution, circuit breaker, schema/migrations - everything `lib/ingest/` already does for The Odds API) is real, separate, larger scope, not attempted in this pass.
+
+**Market matching** (`lib/predictions/matching.ts`) is the interesting new logic: normalized-token Jaccard similarity between Kalshi's and Polymarket's own titles for the same event, greedy highest-confidence-first, one match per market on either side. Deliberately simple and conservative - no ML/embeddings, no stemming (a stated, known limitation: "cuts" and "cut" don't match each other) - matching the PRD's own framing for this exact problem (Section 11.1's admin "Mapping review" module: "Unmatched/ambiguous teams, events, markets, books; merge/split with audit," the identical concept already applied to sportsbook team/event identity). Anything the matcher can't confidently resolve surfaces honestly in a separate "Unmatched markets" section on the same screen, rather than being hidden or guessed at - a real admin merge/split review queue (the PRD's own words) is future scope, not built here, since there's no real ingestion pipeline yet to hang one off of.
+
+Verified against a hand-traced edge case, not just the obvious happy path: the fixture set includes a *closed* Kalshi market whose title overlaps an *open* Polymarket market well above the match threshold, but for a different month - the greedy highest-similarity-first algorithm correctly prefers the true (higher-scoring) match and leaves the closed market honestly unmatched, rather than the naive first-match-wins bug that would have paired them. 11 unit tests, including that exact case.
+
+**Explicitly deferred, not built in this pass:** the PRD's "prediction portfolio" (Section 15.2) - a self-tracked record of prediction-market positions, the equivalent of the sportsbook Tracker for Kalshi/Polymarket. The browse/compare screen above is the higher-value, more novel piece to prove out first; portfolio tracking would mostly reuse the existing Tracker's own CRUD/settle-controls pattern rather than needing new design, so it's lower-risk to defer than to inflate this pass with.
 
 ### Observability & error tracking
 
@@ -171,8 +183,9 @@ Verified directly against Resend's live docs rather than assumed: the current SD
 ```
 lib/calc/       Pure calculation engine (Section 6) + golden-vector tests
 lib/mock/       Seeded fixture data + query API (the default data source - USE_MOCK_DATA=true)
-lib/providers/  Real odds-provider adapter (The Odds API), plus Phase 2 groundwork:
-                read-only, unwired Kalshi/Polymarket adapters (see "Prediction-market adapters" above)
+lib/providers/  Real odds-provider adapter (The Odds API), plus read-only Kalshi/Polymarket
+                client+normalizer adapters (see "Prediction-market adapters" above)
+lib/predictions/  Prediction-market matching + mock data feeding /predictions - see "Prediction markets" above
 lib/ingest/     Identity resolution + ingestion pipeline writing to Postgres (Section 7.3) - run via `npm run ingest`.
                 recompute.ts persists ConsensusSnapshot/OpportunitySnapshot lineage rows after each run.
                 circuit-breaker.ts (Section 11.2) skips a run entirely after repeated provider failures.
@@ -229,14 +242,15 @@ A real audit, not a checklist claim - automated where a tool exists, live-verifi
 ## Known gaps vs. the full PRD
 
 Deliberately out of scope for this pass (flagged, not forgotten):
-- Kalshi/Polymarket **UI, market matching, and prediction portfolio** (Phase 2 - legal review cleared this 2026-09-24, so it's no longer gated, just not yet built; the read-only adapters themselves are built, see "Prediction-market adapters" below).
+- Prediction-market **real ingestion pipeline** (identity resolution, circuit breaker, Postgres schema/migrations for Kalshi/Polymarket - everything `lib/ingest/` already does for The Odds API) and the **prediction portfolio** (self-tracked positions, the Tracker equivalent for prediction markets) - see "Prediction markets" below. Not legally gated anymore, just not yet built.
 - Native mobile/PWA, arbitrage scanner, backtesting (Phase 3+, intentionally gated).
 
 Closed since the last pass:
+- Prediction markets browse/compare screen (`/predictions`) - matching logic (Kalshi vs. Polymarket) and mock-data-backed UI, see "Prediction markets" above. Built once the legal review below cleared the Phase 2 gate.
 - Audit logging (Section 11.1/12.2) - see "Audit logging" above. The `AuditLog` Prisma model existed since this schema was first written but nothing ever wrote to it; the PRD names it as its own dedicated admin module and a required security control.
 - Email alert delivery (Section 10.2) - see "Email alert delivery" above. The PRD requires this at MVP; the `channel: "email"` option existed in the UI/schema but was 100% decorative until now.
 - Error tracking/observability - see "Observability & error tracking" above. No error tracking or structured logging existed anywhere before this; 5 files had raw, inconsistent `console.*` calls and there was no global error boundary at all.
-- Kalshi/Polymarket read-only adapters (Phase 2 groundwork - see "Prediction-market adapters" below for what's built and what's still gated).
+- Kalshi/Polymarket read-only adapters (see "Prediction-market adapters" below).
 - A committed end-to-end test suite (`e2e/`, see "End-to-end tests" above) - every feature before this was verified with a one-off Playwright script written and discarded during the pass that built it, so nothing guarded against future regressions. Now runs in CI on every push/PR.
 - Bankroll input feature (Section 6.4) - previously only the pure Kelly-sizing math existed (`lib/calc/kelly.ts`), with no UI or storage for a user to actually set a bankroll. Now built: an Account settings panel (`components/account/bankroll-form.tsx`) to set a starting amount, max-stake percentage (capped at the mandatory 2%), and an off-by-default toggle for showing sizing guidance; `app/api/v1/account/bankroll/route.ts` (GET/PATCH/DELETE); and a "Suggested stake size" panel on the Analyzer detail page, gated on both a bankroll being set *and* the toggle being on. Mock-only, same scope boundary as tracker/alerts/watchlist below - Prisma's `Bankroll` model exists but stays unwired.
 - `zod`-based input validation on every API route that accepts a body (`lib/api/schemas.ts`, `lib/api/error.ts`'s new `parseBody()`) - see "Accessibility, security & performance" above for what this actually caught (an alert's `conditionType` accepted any string forever, preferences accepted anything at all, several numeric fields silently produced `NaN`).
