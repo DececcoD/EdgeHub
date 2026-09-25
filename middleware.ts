@@ -45,13 +45,21 @@ const isProtectedRoute = createRouteMatcher([
   "/api/v1(.*)"
 ]);
 
+// Sentry's browser SDK (instrumentation-client.ts) posts events straight
+// to their ingest API - connect-src 'self' alone would silently CSP-block
+// every client-side error report. Only added when a DSN is actually
+// configured (the default has none, so connect-src stays exactly 'self').
+// https://*.sentry.io covers Sentry's own SaaS; a self-hosted Sentry
+// instance would need its own domain added here instead.
+const connectSrc = process.env.NEXT_PUBLIC_SENTRY_DSN ? "connect-src 'self' https://*.sentry.io" : "connect-src 'self'";
+
 const CSP = [
   "default-src 'self'",
   "script-src 'self' 'unsafe-inline'",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data:",
   "font-src 'self' data:",
-  "connect-src 'self'",
+  connectSrc,
   "object-src 'none'",
   "frame-ancestors 'none'",
   "base-uri 'self'",

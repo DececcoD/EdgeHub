@@ -30,7 +30,7 @@ What's mocked and clearly marked as such in code comments:
 ```bash
 npm install
 npm run lint     # ESLint (next/core-web-vitals) - also runs in CI
-npm test         # 131 tests: golden vectors, mock store invariants, CSV validator, AI schema, odds-provider adapter, identity resolution, circuit breaker, alert evaluation, rate limiting, zod body validation, bankroll settings, Kalshi/Polymarket adapters
+npm test         # 140 tests: golden vectors, mock store invariants, CSV validator, AI schema, odds-provider adapter, identity resolution, circuit breaker, alert evaluation, rate limiting, zod body validation, bankroll settings, Kalshi/Polymarket adapters, observability (logger/error-capture)
 npm run dev      # http://localhost:3000
 ```
 
@@ -132,6 +132,22 @@ Every field name and endpoint shape here was verified directly against each prov
 
 Kalshi's scalar markets (a continuous-value resolution, not discrete Yes/No) and any Polymarket market whose three parallel arrays don't parse to equal lengths are skipped with a warning rather than guessed at - same "warn, don't fabricate" convention `the-odds-api/normalize.ts` already established for unmapped outcome names. 23 unit tests against fixtures built field-by-field from each provider's real documented schema (no example payloads are published on Kalshi's docs; Polymarket's fixture reuses their own published example for the JSON-encoded-string fields).
 
+### Observability & error tracking
+
+Previously there was no error tracking or structured logging anywhere in this app - 5 files had raw, inconsistent `console.log`/`console.error` calls (webhooks, real-time bus, the ingestion CLI), and an unhandled render error fell through to Next's default, unstyled error screen with nothing recording it anywhere.
+
+**Always active, zero config** (`lib/observability/logger.ts`): every log call now goes through `log.info`/`warn`/`error`, emitting one structured JSON line per event in production (a human-readable line in development). No external dependency - this part works today, with nothing to configure.
+
+**Error tracking** (`lib/observability/capture.ts`, gated on `SENTRY_DSN`/`NEXT_PUBLIC_SENTRY_DSN`) follows the exact same seam pattern as `lib/data-source.ts`/`lib/auth/session.ts`/`lib/billing/client-mode.ts` - callers call `captureException()`/`captureMessage()` here, never `@sentry/nextjs` directly. With no DSN set (the default - no Sentry account exists to test against in this environment), `Sentry.captureException()` is a confirmed, documented no-op (verified directly against the installed `@sentry/core` source: it only sets up a transport when `options.dsn` is truthy), so this behaves identically whether or not Sentry is configured - same "zero config to run" property as every other integration.
+
+What's wired: `instrumentation.ts` (server/edge init via Next's own `register()` hook + `onRequestError`), `instrumentation-client.ts` (browser init - the current `@sentry/nextjs` v11 convention, confirmed against their live docs; the older `sentry.client.config.ts` filename now just prints a deprecation warning), `app/global-error.tsx` (previously nonexistent - the last-resort boundary for an unhandled render error, styled in the app's own design system rather than left as Next's default screen, and reports to Sentry via `useEffect`), and a conditional `withSentryConfig` wrap in `next.config.mjs` that only activates when `SENTRY_AUTH_TOKEN`/`SENTRY_ORG`/`SENTRY_PROJECT` are also set (source-map upload needs real Sentry API credentials this environment has none of - `npm run build` with zero env vars is byte-for-byte unchanged, verified). `middleware.ts`'s CSP grows a `connect-src https://*.sentry.io` allowance only when a DSN is configured - otherwise Sentry's own client-side event posting would be silently CSP-blocked.
+
+**A real architectural question this raised, worth recording:** this project already found ("Alert evaluation" above) that `instrumentation.ts` compiles into an isolated bundle that does NOT share module-scoped state with route handlers. Does that break Sentry's own documented `instrumentation.ts` pattern too? Verified directly against the installed `@sentry/core` source rather than assumed either way: Sentry stores its client on `globalThis.__SENTRY__` (`getGlobalSingleton()` in `carrier.js`) - a true global, not a module-scoped variable - so it survives bundle isolation for a completely different reason than why the alert-evaluation subscription couldn't. Two different mechanisms, two different outcomes; neither finding generalizes to the other, which is exactly why this got checked instead of assumed.
+
+**Live-verified**, not just type-checked: `npm run build` with zero env vars (unchanged output, confirming the invariant); a second build with `SENTRY_DSN` set but no `SENTRY_AUTH_TOKEN` (confirms the config wrap is correctly skipped - no source-map upload attempted); a production server started with a syntactically-real-but-fake `SENTRY_DSN` and `STRIPE_WEBHOOK_SECRET` set, then a deliberately bad Stripe webhook signature fired at it - the server logged the structured error line, called through to `Sentry.captureException` without throwing (its async transport failing against the fake host is silent by design), and returned the exact same `400` it always did. The full 50-spec Playwright suite (including the WCAG scan, sensitive to any new console error) still passes unchanged. **Not verified**: actual delivery to a real Sentry project, or the build-time source-map upload path - no Sentry account exists to test either against, same disclosed gap as Stripe/Clerk elsewhere in this project.
+
+Edge bundle size grew from 78.7 kB to 126 kB even with Sentry completely unconfigured - `instrumentation.ts` unconditionally imports `@sentry/nextjs` at module scope (needed for the always-exported `onRequestError`), and Next compiles `instrumentation.ts` for the edge runtime too (the same no-per-runtime-opt-out behavior this project found for `ioredis` earlier) - but unlike `ioredis`, `@sentry/nextjs` ships real edge-compatible exports (confirmed via its `package.json`'s `exports` map), so it resolves cleanly rather than breaking the build. Comfortably within any real platform's edge-function size limit, but a genuine, disclosed size cost of adding this at all.
+
 ## Project layout
 
 ```
@@ -157,6 +173,8 @@ prisma/         Full DB schema (Section 8) + the committed initial migration (pr
 Dockerfile, docker-compose.yml, .github/workflows/ci.yml, DEPLOYMENT.md  Deployment/ops - see DEPLOYMENT.md
 middleware.ts   Clerk route protection (no-op in mock mode) + the CSP header (Section 14)
 lib/security/   Rate limiting (Section 14) - in-process only, see rate-limit.ts's header
+lib/observability/  Structured logging (always on) + the Sentry error-capture seam, gated on SENTRY_DSN - see "Observability & error tracking" above
+instrumentation.ts, instrumentation-client.ts, sentry.*.config.ts, app/global-error.tsx  Sentry SDK wiring - see "Observability & error tracking" above
 lib/api/        error.ts's apiError/parseBody (shared response shape + zod-validated body parsing) + schemas.ts (every route's body schema)
 app/api/webhooks/clerk/   Clerk user.created/user.updated -> local `users` table sync
 app/api/webhooks/stripe/  Stripe subscription events -> local `Subscription` table sync (sole writer of `plan` in real billing mode)
@@ -195,6 +213,7 @@ Deliberately out of scope for this pass (flagged, not forgotten):
 - Native mobile/PWA, arbitrage scanner, backtesting (Phase 3+, intentionally gated).
 
 Closed since the last pass:
+- Error tracking/observability - see "Observability & error tracking" above. No error tracking or structured logging existed anywhere before this; 5 files had raw, inconsistent `console.*` calls and there was no global error boundary at all.
 - Kalshi/Polymarket read-only adapters (Phase 2 groundwork - see "Prediction-market adapters" below for what's built and what's still gated).
 - A committed end-to-end test suite (`e2e/`, see "End-to-end tests" above) - every feature before this was verified with a one-off Playwright script written and discarded during the pass that built it, so nothing guarded against future regressions. Now runs in CI on every push/PR.
 - Bankroll input feature (Section 6.4) - previously only the pure Kelly-sizing math existed (`lib/calc/kelly.ts`), with no UI or storage for a user to actually set a bankroll. Now built: an Account settings panel (`components/account/bankroll-form.tsx`) to set a starting amount, max-stake percentage (capped at the mandatory 2%), and an off-by-default toggle for showing sizing guidance; `app/api/v1/account/bankroll/route.ts` (GET/PATCH/DELETE); and a "Suggested stake size" panel on the Analyzer detail page, gated on both a bankroll being set *and* the toggle being on. Mock-only, same scope boundary as tracker/alerts/watchlist below - Prisma's `Bankroll` model exists but stays unwired.

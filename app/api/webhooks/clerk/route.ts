@@ -9,13 +9,14 @@ import { verifyWebhook } from "@clerk/nextjs/webhooks";
 import type { NextRequest } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { createFromClerkUser } from "@/lib/db/user-profile";
+import { captureException, captureMessage } from "@/lib/observability/capture";
 
 export async function POST(request: NextRequest) {
   let event;
   try {
     event = await verifyWebhook(request);
   } catch (error) {
-    console.error("Clerk webhook signature verification failed:", error);
+    captureException(error, { route: "webhooks/clerk", stage: "verify" });
     return new Response("Webhook verification failed", { status: 400 });
   }
 
@@ -25,7 +26,7 @@ export async function POST(request: NextRequest) {
         event.data.email_addresses.find((e) => e.id === event.data.primary_email_address_id)?.email_address ??
         event.data.email_addresses[0]?.email_address;
       if (!primaryEmail) {
-        console.error(`Clerk user.created webhook for ${event.data.id} had no email address - skipping local sync.`);
+        captureMessage("Clerk user.created webhook had no email address - skipping local sync", { clerkUserId: event.data.id });
         return new Response("No email address on user", { status: 200 }); // 2xx: don't ask Clerk to retry a payload that will never have an email
       }
       await createFromClerkUser({ clerkUserId: event.data.id, email: primaryEmail });
@@ -47,7 +48,7 @@ export async function POST(request: NextRequest) {
 
     return new Response("OK", { status: 200 });
   } catch (error) {
-    console.error("Clerk webhook handler failed:", error);
+    captureException(error, { route: "webhooks/clerk", stage: "handle", eventType: event.type });
     // 500 tells Clerk to retry - correct here since this is our bug, not a
     // malformed payload.
     return new Response("Internal error", { status: 500 });

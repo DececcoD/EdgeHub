@@ -11,6 +11,7 @@
 import Stripe from "stripe";
 import { getStripeClient } from "@/lib/billing/stripe";
 import { findUserIdByStripeCustomerId, syncSubscriptionFromStripe } from "@/lib/billing/subscription-store";
+import { captureException, captureMessage } from "@/lib/observability/capture";
 import type { Plan } from "@/lib/types";
 
 function planFromMetadata(metadata: Stripe.Metadata): Plan | null {
@@ -25,7 +26,7 @@ async function syncFromSubscriptionObject(subscription: Stripe.Subscription, fal
   const stripeCustomerId = customerIdOf(subscription.customer);
   const userId = subscription.metadata.userId ?? (await findUserIdByStripeCustomerId(stripeCustomerId));
   if (!userId) {
-    console.error(`Stripe subscription ${subscription.id} has no userId metadata and no matching local customer - cannot sync.`);
+    captureMessage("Stripe subscription has no userId metadata and no matching local customer - cannot sync", { subscriptionId: subscription.id });
     return;
   }
 
@@ -55,7 +56,7 @@ export async function POST(request: Request) {
   try {
     event = getStripeClient().webhooks.constructEvent(rawBody, signature, webhookSecret);
   } catch (error) {
-    console.error("Stripe webhook signature verification failed:", error);
+    captureException(error, { route: "webhooks/stripe", stage: "verify" });
     return new Response("Webhook signature verification failed", { status: 400 });
   }
 
@@ -88,7 +89,7 @@ export async function POST(request: Request) {
         // and subscription.status transitions (active -> past_due ->
         // unpaid/canceled) already drive that; nothing to do here beyond
         // logging until a dedicated dunning/notification flow exists.
-        console.warn(`Invoice payment failed for customer ${customerIdOf(event.data.object.customer!)}`);
+        captureMessage("Invoice payment failed", { customerId: customerIdOf(event.data.object.customer!) });
         break;
       }
 
@@ -98,7 +99,7 @@ export async function POST(request: Request) {
 
     return new Response("OK", { status: 200 });
   } catch (error) {
-    console.error("Stripe webhook handler failed:", error);
+    captureException(error, { route: "webhooks/stripe", stage: "handle", eventType: event.type });
     return new Response("Internal error", { status: 500 }); // 500 tells Stripe to retry
   }
 }

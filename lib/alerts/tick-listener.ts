@@ -31,6 +31,7 @@
  * that tick loops straight back through this same listener.
  */
 import { realtimeBus, type RealtimeEvent } from "../realtime/bus";
+import { captureException } from "../observability/capture";
 import { evaluateAlerts } from "./evaluate";
 
 let subscribed = false;
@@ -42,7 +43,7 @@ export function subscribeAlertsToTicks(): void {
   realtimeBus.subscribe((event: RealtimeEvent) => {
     if (event.type !== "odds_tick") return;
     evaluateAlerts().catch((error) => {
-      console.error("evaluateAlerts() failed while reacting to an odds_tick bus event:", error);
+      captureException(error, { source: "tick-listener", event: "odds_tick" });
     });
   });
 }

@@ -13,10 +13,17 @@
  * real - fails fast with a clear message if either is missing, rather than
  * quietly doing nothing.
  */
+// This CLI is always a separate process from the web server (see the
+// realtimeBus.publish() comment below) - it never goes through Next's
+// instrumentation.ts register() hook, so Sentry needs its own explicit
+// init here. Reuses the exact same guarded config Next's server runtime
+// uses, rather than duplicating the Sentry.init() call.
+import "../sentry.server.config";
 import { prisma } from "../lib/db/prisma";
 import { ingestLeague } from "../lib/ingest/pipeline";
 import { persistDerivedSnapshots } from "../lib/ingest/recompute";
 import { realtimeBus } from "../lib/realtime/bus";
+import { captureException, log } from "../lib/observability";
 import type { LeagueKey, MarketType, SportsbookKey } from "../lib/types";
 
 const ALL_LEAGUES: LeagueKey[] = ["nfl", "nba", "mlb", "nhl"];
@@ -37,13 +44,13 @@ function parseLeagueArg(): LeagueKey[] {
 
 async function main() {
   if (!process.env.ODDS_PROVIDER_API_KEY) {
-    console.error("ODDS_PROVIDER_API_KEY is not set - see .env.example. Nothing to do against mock data.");
+    log.error("ODDS_PROVIDER_API_KEY is not set - see .env.example. Nothing to do against mock data.");
     process.exitCode = 1;
     return;
   }
 
   const leagues = parseLeagueArg();
-  console.log(`Ingesting: ${leagues.join(", ")} | markets: ${ALL_MARKETS.join(", ")} | books: ${ALL_BOOKS.join(", ")}`);
+  log.info("ingest_started", { leagues, markets: ALL_MARKETS, sportsbooks: ALL_BOOKS });
 
   for (const league of leagues) {
     try {
@@ -53,17 +60,21 @@ async function main() {
         // this run from hammering a provider that's already failing
         // repeatedly. Still a nonzero exit so a scheduler watching for
         // "did anything actually happen" notices, just a different message.
-        console.warn(`[${league}] skipped - circuit breaker is open for this provider, retrying automatically once its cooldown elapses.`);
+        log.warn("ingest_skipped_circuit_breaker_open", { league });
         process.exitCode = 1;
         continue;
       }
-      console.log(
-        `[${league}] run ${summary.runId}: ${summary.eventsFetched} events fetched, ${summary.eventsResolved} resolved, ${summary.eventsSkipped} skipped, ${summary.snapshotsWritten} snapshots written` +
-          (summary.warnings.length ? ` (${summary.warnings.length} warnings)` : "")
-      );
-      for (const warning of summary.warnings) console.warn(`  - ${warning}`);
+      log.info("ingest_league_completed", {
+        league,
+        runId: summary.runId,
+        eventsFetched: summary.eventsFetched,
+        eventsResolved: summary.eventsResolved,
+        eventsSkipped: summary.eventsSkipped,
+        snapshotsWritten: summary.snapshotsWritten,
+        warnings: summary.warnings
+      });
     } catch (error) {
-      console.error(`[${league}] ingestion failed:`, error instanceof Error ? error.message : error);
+      captureException(error, { league, stage: "ingestLeague" });
       process.exitCode = 1;
     }
   }
@@ -74,11 +85,9 @@ async function main() {
   let recomputeSummary: { marketsSnapshotted: number; outcomesSnapshotted: number } | null = null;
   try {
     recomputeSummary = await persistDerivedSnapshots(prisma);
-    console.log(
-      `Snapshots persisted: ${recomputeSummary.marketsSnapshotted} markets, ${recomputeSummary.outcomesSnapshotted} outcomes`
-    );
+    log.info("snapshots_persisted", recomputeSummary);
   } catch (error) {
-    console.error("Persisting derived snapshots failed:", error instanceof Error ? error.message : error);
+    captureException(error, { stage: "persistDerivedSnapshots" });
     process.exitCode = 1;
   }
 
@@ -102,7 +111,7 @@ async function main() {
         at: new Date().toISOString()
       });
     } catch (error) {
-      console.warn("Publishing odds_tick failed (non-fatal):", error instanceof Error ? error.message : error);
+      captureException(error, { stage: "realtimeBus.publish", fatal: false });
     }
   }
 

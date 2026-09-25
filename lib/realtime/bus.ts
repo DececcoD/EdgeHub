@@ -18,6 +18,7 @@
  */
 import { EventEmitter } from "node:events";
 import Redis from "ioredis";
+import { captureException } from "../observability/capture";
 
 export interface OddsTickEvent {
   type: "odds_tick";
@@ -92,7 +93,7 @@ class RedisBus implements RealtimeBus {
       }
     };
 
-    client.subscribe(CHANNEL).catch((error) => console.error("RedisBus subscribe failed:", error));
+    client.subscribe(CHANNEL).catch((error) => captureException(error, { source: "RedisBus", stage: "subscribe" }));
     client.on("message", handler);
     this.subscriberByListener.set(onEvent, client);
 
