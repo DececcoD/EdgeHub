@@ -89,6 +89,25 @@ export const settleBetSchema = z.object({
   closingDecimalOdds: z.number().positive().optional()
 });
 
+export const predictionMarketProviderSchema = z.enum(["kalshi", "polymarket"]);
+export const predictionPositionStatusSchema = z.enum(["open", "won", "lost", "void"]);
+
+export const createPredictionPositionSchema = z.object({
+  provider: predictionMarketProviderSchema,
+  providerMarketId: z.string().trim().min(1),
+  marketTitle: z.string().trim().min(1),
+  outcomeLabel: z.string().trim().min(1),
+  entryPrice: z.number().min(0.01, "entryPrice must be greater than 0").max(0.99, "entryPrice must be less than 1"),
+  stakeAmount: z.number().positive("stakeAmount must be greater than 0"),
+  placedAt: z.string().datetime().optional(),
+  notes: z.string().optional()
+});
+
+export const settlePredictionPositionSchema = z.object({
+  status: predictionPositionStatusSchema,
+  closingPrice: z.number().min(0).max(1).optional()
+});
+
 export const importCsvSchema = z.object({
   csv: z.string().trim().min(1, "csv text is required")
 });

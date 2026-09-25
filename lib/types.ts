@@ -124,6 +124,37 @@ export interface TrackedBet {
   history: { changedAt: string; field: string; from: string; to: string }[];
 }
 
+/**
+ * The "prediction portfolio" (Section 15.2) - the Tracker equivalent for
+ * Kalshi/Polymarket positions. Deliberately narrower than TrackedBet: no
+ * cash-out states, since neither provider's early-exit mechanics are
+ * modeled here (Section 6's cash-out formulas are sportsbook-specific) -
+ * a contract either resolves or doesn't. Mock-only, same scope boundary
+ * as TrackedBet/AlertDef/watchlist - see lib/mock/user-data.ts.
+ */
+export type PredictionPositionStatus = "open" | "won" | "lost" | "void";
+
+export interface PredictionPosition {
+  id: string;
+  userId: string;
+  provider: "kalshi" | "polymarket";
+  providerMarketId: string;
+  marketTitle: string;
+  outcomeLabel: string; // "Yes" / "No" / a named outcome
+  entryPrice: number; // 0-1, price per share/contract at entry
+  stakeAmount: number; // dollars paid
+  currency: "USD";
+  placedAt: string;
+  status: PredictionPositionStatus;
+  closingPrice: number | null; // null = unavailable, never assumed
+  notes?: string;
+  netProfit: number;
+  returnedAmount: number;
+  createdAt: string;
+  updatedAt: string;
+  history: { changedAt: string; field: string; from: string; to: string }[];
+}
+
 export interface AlertDef {
   id: string;
   userId: string;

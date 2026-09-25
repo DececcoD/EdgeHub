@@ -30,7 +30,7 @@ What's mocked and clearly marked as such in code comments:
 ```bash
 npm install
 npm run lint     # ESLint (next/core-web-vitals) - also runs in CI
-npm test         # 164 tests: golden vectors, mock store invariants, CSV validator, AI schema, odds-provider adapter, identity resolution, circuit breaker, alert evaluation, rate limiting, zod body validation, bankroll settings, Kalshi/Polymarket adapters, observability (logger/error-capture), email alert delivery, audit logging, prediction-market matching
+npm test         # 170 tests: golden vectors, mock store invariants, CSV validator, AI schema, odds-provider adapter, identity resolution, circuit breaker, alert evaluation, rate limiting, zod body validation, bankroll settings, Kalshi/Polymarket adapters, observability (logger/error-capture), email alert delivery, audit logging, prediction-market matching, prediction-position settlement
 npm run dev      # http://localhost:3000
 ```
 
@@ -142,7 +142,7 @@ Built once the legal gate above cleared - a new screen comparing Kalshi vs. Poly
 
 Verified against a hand-traced edge case, not just the obvious happy path: the fixture set includes a *closed* Kalshi market whose title overlaps an *open* Polymarket market well above the match threshold, but for a different month - the greedy highest-similarity-first algorithm correctly prefers the true (higher-scoring) match and leaves the closed market honestly unmatched, rather than the naive first-match-wins bug that would have paired them. 11 unit tests, including that exact case.
 
-**Explicitly deferred, not built in this pass:** the PRD's "prediction portfolio" (Section 15.2) - a self-tracked record of prediction-market positions, the equivalent of the sportsbook Tracker for Kalshi/Polymarket. The browse/compare screen above is the higher-value, more novel piece to prove out first; portfolio tracking would mostly reuse the existing Tracker's own CRUD/settle-controls pattern rather than needing new design, so it's lower-risk to defer than to inflate this pass with.
+**Update: the prediction portfolio is now built too.** PRD Section 15.2's "prediction portfolio" - a self-tracked record of prediction-market positions, the Tracker equivalent for Kalshi/Polymarket - is exactly the CRUD/settle-controls pattern predicted above: `PredictionPosition` (`lib/types.ts`), `lib/calc/prediction-settlement.ts` (mirrors `lib/calc/settlement.ts`'s `settleBet()`, deliberately narrower - no cash-out states, since a binary contract either resolves or doesn't), `app/api/v1/predictions/positions/{,[positionId]}` routes, and a "Your positions" panel on the same `/predictions` screen with an "Add a position manually" form. A position bought at price P with stake S pays `S/P` dollars back if it resolves in your favor, `0` if not, `S` (unchanged) if voided - live-verified end to end against a running production server: a real $25 position at a 0.40 entry price, settled won, returned exactly $62.50 (net +$37.50), matching the unit tests' golden vector. 6 new settlement tests plus a new e2e spec covering the full add-position-then-settle flow.
 
 ### Observability & error tracking
 
@@ -242,10 +242,11 @@ A real audit, not a checklist claim - automated where a tool exists, live-verifi
 ## Known gaps vs. the full PRD
 
 Deliberately out of scope for this pass (flagged, not forgotten):
-- Prediction-market **real ingestion pipeline** (identity resolution, circuit breaker, Postgres schema/migrations for Kalshi/Polymarket - everything `lib/ingest/` already does for The Odds API) and the **prediction portfolio** (self-tracked positions, the Tracker equivalent for prediction markets) - see "Prediction markets" below. Not legally gated anymore, just not yet built.
+- Prediction-market **real ingestion pipeline** (identity resolution, circuit breaker, Postgres schema/migrations for Kalshi/Polymarket - everything `lib/ingest/` already does for The Odds API) - `/predictions` still runs on mock fixture data. Not legally gated anymore, just not yet built.
 - Native mobile/PWA, arbitrage scanner, backtesting (Phase 3+, intentionally gated).
 
 Closed since the last pass:
+- Prediction portfolio (Section 15.2) - self-tracked Kalshi/Polymarket positions with real settlement math, see "Prediction markets" above.
 - Prediction markets browse/compare screen (`/predictions`) - matching logic (Kalshi vs. Polymarket) and mock-data-backed UI, see "Prediction markets" above. Built once the legal review below cleared the Phase 2 gate.
 - Audit logging (Section 11.1/12.2) - see "Audit logging" above. The `AuditLog` Prisma model existed since this schema was first written but nothing ever wrote to it; the PRD names it as its own dedicated admin module and a required security control.
 - Email alert delivery (Section 10.2) - see "Email alert delivery" above. The PRD requires this at MVP; the `channel: "email"` option existed in the UI/schema but was 100% decorative until now.

@@ -1,10 +1,21 @@
 import { listMockPredictionMarkets } from "@/lib/predictions/mock-data";
 import { matchPredictionMarkets } from "@/lib/predictions/matching";
-import { formatProbability } from "@/lib/calc/format";
+import { formatProbability, formatSignedCurrency } from "@/lib/calc/format";
+import { getSessionOrDemo } from "@/lib/auth/session";
+import { listPredictionPositions } from "@/lib/mock/user-data";
 import { EmptyState, Panel, PanelHeader } from "@/components/ui/primitives";
+import { CreatePositionForm } from "@/components/predictions/create-position-form";
+import { SettlePositionControls } from "@/components/predictions/settle-position-controls";
 import type { NormalizedPredictionMarket, NormalizedPredictionOutcome } from "@/lib/providers/prediction-markets/types";
 
 export const metadata = { title: "Prediction markets - EdgeHub" };
+
+const STATUS_TONE: Record<string, string> = {
+  won: "text-signal-text",
+  lost: "text-risk-text",
+  void: "text-paper-muted dark:text-ink-muted",
+  open: "text-caution-text"
+};
 
 function findYesOutcome(market: NormalizedPredictionMarket): NormalizedPredictionOutcome | null {
   return market.outcomes.find((o) => o.label.toLowerCase() === "yes") ?? null;
@@ -15,8 +26,10 @@ function statusLabel(status: NormalizedPredictionMarket["status"]): string {
 }
 
 export default async function PredictionsPage() {
+  const session = await getSessionOrDemo();
   const markets = listMockPredictionMarkets();
   const { matched, unmatched } = matchPredictionMarkets(markets);
+  const positions = listPredictionPositions(session.userId);
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-4">
@@ -106,6 +119,55 @@ export default async function PredictionsPage() {
               );
             })}
           </ul>
+        )}
+      </Panel>
+
+      <div className="flex items-center justify-between">
+        <CreatePositionForm />
+      </div>
+
+      <Panel>
+        <PanelHeader
+          title="Your positions"
+          subtitle="Recorded privately for your own tracking - EdgeHub never places a trade on Kalshi or Polymarket"
+        />
+        {positions.length === 0 ? (
+          <EmptyState title="Nothing tracked yet" description="Add a position manually above to start your prediction portfolio." />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="text-xs uppercase tracking-wide text-paper-muted dark:text-ink-muted">
+                  <th className="px-4 py-2">Market</th>
+                  <th className="px-4 py-2">Outcome</th>
+                  <th className="px-4 py-2">Provider</th>
+                  <th className="px-4 py-2">Entry price</th>
+                  <th className="px-4 py-2">Stake</th>
+                  <th className="px-4 py-2">Status</th>
+                  <th className="px-4 py-2">Net</th>
+                  <th className="px-4 py-2">Settle</th>
+                </tr>
+              </thead>
+              <tbody>
+                {positions.map((position) => (
+                  <tr key={position.id} className="border-t border-paper-200 dark:border-ink-800">
+                    <td className="px-4 py-2">{position.marketTitle}</td>
+                    <td className="px-4 py-2">{position.outcomeLabel}</td>
+                    <td className="px-4 py-2 capitalize">{position.provider}</td>
+                    <td className="px-4 py-2 font-mono tabular">{formatProbability(position.entryPrice, 1)}</td>
+                    <td className="px-4 py-2 font-mono tabular">{formatSignedCurrency(position.stakeAmount).replace("+", "")}</td>
+                    <td className={`px-4 py-2 font-medium capitalize ${STATUS_TONE[position.status]}`}>{position.status}</td>
+                    <td className={`px-4 py-2 font-mono tabular ${position.netProfit >= 0 ? "text-signal-text" : "text-risk-text"}`}>
+                      {formatSignedCurrency(position.netProfit)}
+                    </td>
+                    <td className="px-4 py-2">
+                      <SettlePositionControls positionId={position.id} currentStatus={position.status} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </Panel>
     </div>

@@ -7,7 +7,18 @@
 import { americanToDecimal, decimalToAmerican } from "../calc/odds";
 import { DEFAULT_MAX_BANKROLL_FRACTION } from "../calc/kelly";
 import { settleBet, type BetStatus } from "../calc/settlement";
-import type { AlertDef, AlertFiredEvent, BankrollSettings, LeagueKey, MarketType, SportsbookKey, TrackedBet } from "../types";
+import { settlePredictionPosition } from "../calc/prediction-settlement";
+import type {
+  AlertDef,
+  AlertFiredEvent,
+  BankrollSettings,
+  LeagueKey,
+  MarketType,
+  PredictionPosition,
+  PredictionPositionStatus,
+  SportsbookKey,
+  TrackedBet
+} from "../types";
 import { ensureDemoUser } from "../auth/user-store";
 import { listOpportunities } from "./store";
 
@@ -16,8 +27,10 @@ const alertsByUser = new Map<string, AlertDef[]>();
 const watchlistByUser = new Map<string, string[]>(); // userId -> outcomeId[]
 const alertEventsByUser = new Map<string, AlertFiredEvent[]>();
 const bankrollByUser = new Map<string, BankrollSettings>();
+const predictionPositionsByUser = new Map<string, PredictionPosition[]>();
 let betSeq = 1;
 let alertSeq = 1;
+let predictionPositionSeq = 1;
 let alertEventSeq = 1;
 
 function nextBetId(): string {
@@ -28,6 +41,11 @@ function nextBetId(): string {
 function nextAlertId(): string {
   const id = `alert_${alertSeq.toString(36)}`;
   alertSeq += 1;
+  return id;
+}
+function nextPredictionPositionId(): string {
+  const id = `predpos_${predictionPositionSeq.toString(36)}`;
+  predictionPositionSeq += 1;
   return id;
 }
 function nextAlertEventId(): string {
@@ -112,6 +130,78 @@ export function settleTrackedBet(
   if (opts?.closingDecimalOdds) bet.closingDecimalOdds = opts.closingDecimalOdds;
   bet.updatedAt = new Date().toISOString();
   return bet;
+}
+
+// ---------------------------------------------------------------------------
+// Prediction portfolio (Section 15.2) - the Tracker equivalent for Kalshi/
+// Polymarket positions. Mock-only, same scope boundary as bets/alerts/
+// watchlist above - see lib/types.ts's PredictionPosition header.
+// ---------------------------------------------------------------------------
+
+export interface CreatePredictionPositionInput {
+  userId: string;
+  provider: "kalshi" | "polymarket";
+  providerMarketId: string;
+  marketTitle: string;
+  outcomeLabel: string;
+  entryPrice: number;
+  stakeAmount: number;
+  placedAt: string;
+  notes?: string;
+}
+
+export function createPredictionPosition(input: CreatePredictionPositionInput): PredictionPosition {
+  const settled = settlePredictionPosition({ stakeAmount: input.stakeAmount, entryPrice: input.entryPrice, status: "open" });
+  const position: PredictionPosition = {
+    id: nextPredictionPositionId(),
+    userId: input.userId,
+    provider: input.provider,
+    providerMarketId: input.providerMarketId,
+    marketTitle: input.marketTitle,
+    outcomeLabel: input.outcomeLabel,
+    entryPrice: input.entryPrice,
+    stakeAmount: input.stakeAmount,
+    currency: "USD",
+    placedAt: input.placedAt,
+    status: "open",
+    closingPrice: null,
+    notes: input.notes,
+    netProfit: settled.netProfit,
+    returnedAmount: settled.returnedAmount,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    history: []
+  };
+  const list = predictionPositionsByUser.get(input.userId) ?? [];
+  list.unshift(position);
+  predictionPositionsByUser.set(input.userId, list);
+  return position;
+}
+
+export function listPredictionPositions(userId: string): PredictionPosition[] {
+  return predictionPositionsByUser.get(userId) ?? [];
+}
+
+export function settleTrackedPredictionPosition(
+  userId: string,
+  positionId: string,
+  status: PredictionPositionStatus,
+  opts?: { closingPrice?: number }
+): PredictionPosition | null {
+  const list = predictionPositionsByUser.get(userId);
+  const position = list?.find((p) => p.id === positionId);
+  if (!position) return null;
+
+  const previousStatus = position.status;
+  const settled = settlePredictionPosition({ stakeAmount: position.stakeAmount, entryPrice: position.entryPrice, status });
+
+  position.history.push({ changedAt: new Date().toISOString(), field: "status", from: previousStatus, to: status });
+  position.status = status;
+  position.netProfit = settled.netProfit;
+  position.returnedAmount = settled.returnedAmount;
+  if (opts?.closingPrice !== undefined) position.closingPrice = opts.closingPrice;
+  position.updatedAt = new Date().toISOString();
+  return position;
 }
 
 export function createAlert(input: Omit<AlertDef, "id" | "createdAt" | "lastTriggeredAt" | "status">): AlertDef {
