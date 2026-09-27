@@ -18,6 +18,16 @@ export interface ResolvedEvent {
   eventId: string;
   homeTeamId: string;
   awayTeamId: string;
+  /** EventParticipant.id, NOT Team.id - Outcome.participantId's foreign key
+   * points at event_participants, since a team can appear in many events.
+   * A real, previously-undiscovered bug here (this file passed Team.id
+   * straight through as if it were the participant ID) was only caught by
+   * running real fetched odds through resolveMarketAndOutcome() against an
+   * actual Postgres foreign-key constraint - mock mode never exercises
+   * this code at all, and every prior real-Postgres verification of this
+   * pipeline ran against zero real markets (see DEPLOYMENT.md). */
+  homeParticipantId: string;
+  awayParticipantId: string;
   homeTeamName: string;
   awayTeamName: string;
 }
@@ -99,7 +109,21 @@ export async function resolveEvent(prisma: PrismaClient, providerId: string, nor
     where: { providerId_sourceKey_entityType: { providerId, sourceKey: normalized.providerEventId, entityType: "event" } }
   });
   if (existingSource?.canonicalEntityId) {
-    return { eventId: existingSource.canonicalEntityId, homeTeamId, awayTeamId, homeTeamName: normalized.homeTeamName, awayTeamName: normalized.awayTeamName };
+    const participants = await prisma.eventParticipant.findMany({ where: { eventId: existingSource.canonicalEntityId } });
+    const home = participants.find((p) => p.side === "home");
+    const away = participants.find((p) => p.side === "away");
+    if (!home || !away) {
+      throw new Error(`Event ${existingSource.canonicalEntityId} is missing a home or away EventParticipant row - data corruption, not a normal mapping gap.`);
+    }
+    return {
+      eventId: existingSource.canonicalEntityId,
+      homeTeamId,
+      awayTeamId,
+      homeParticipantId: home.id,
+      awayParticipantId: away.id,
+      homeTeamName: normalized.homeTeamName,
+      awayTeamName: normalized.awayTeamName
+    };
   }
 
   const event = await prisma.event.create({
@@ -114,14 +138,29 @@ export async function resolveEvent(prisma: PrismaClient, providerId: string, nor
           { teamId: awayTeamId, side: "away" }
         ]
       }
-    }
+    },
+    include: { participants: true }
   });
 
   await prisma.sourceEntity.create({
     data: { providerId, sourceKey: normalized.providerEventId, entityType: "event", canonicalEntityId: event.id, confidence: 1.0 }
   });
 
-  return { eventId: event.id, homeTeamId, awayTeamId, homeTeamName: normalized.homeTeamName, awayTeamName: normalized.awayTeamName };
+  const home = event.participants.find((p) => p.side === "home");
+  const away = event.participants.find((p) => p.side === "away");
+  if (!home || !away) {
+    throw new Error(`Just-created event ${event.id} is missing a home or away EventParticipant row - the nested create above didn't behave as expected.`);
+  }
+
+  return {
+    eventId: event.id,
+    homeTeamId,
+    awayTeamId,
+    homeParticipantId: home.id,
+    awayParticipantId: away.id,
+    homeTeamName: normalized.homeTeamName,
+    awayTeamName: normalized.awayTeamName
+  };
 }
 
 function outcomeLabel(quote: NormalizedQuote, resolved: ResolvedEvent): string {
@@ -173,7 +212,7 @@ export async function resolveMarketAndOutcome(
     }
   });
 
-  const participantId = quote.side === "home" ? resolved.homeTeamId : quote.side === "away" ? resolved.awayTeamId : null;
+  const participantId = quote.side === "home" ? resolved.homeParticipantId : quote.side === "away" ? resolved.awayParticipantId : null;
   const canonicalKey = quote.side;
 
   const outcome = await prisma.outcome.upsert({

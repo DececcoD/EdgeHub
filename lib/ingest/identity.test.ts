@@ -82,11 +82,19 @@ function makeFakePrisma() {
       create: async ({ data }: any) => {
         const event = { id: newId("evt"), leagueId: data.leagueId, canonicalStartAt: data.canonicalStartAt, status: data.status };
         events.push(event);
-        for (const p of data.participants.create) {
-          eventParticipants.push({ id: newId("ep"), eventId: event.id, teamId: p.teamId, side: p.side });
-        }
-        return event;
+        const createdParticipants = data.participants.create.map((p: any) => {
+          const row = { id: newId("ep"), eventId: event.id, teamId: p.teamId, side: p.side };
+          eventParticipants.push(row);
+          return row;
+        });
+        // Mirrors `include: { participants: true }` in the real call - a
+        // real Prisma create() with that option returns the nested rows,
+        // and identity.ts's resolveEvent() now depends on that.
+        return { ...event, participants: createdParticipants };
       }
+    },
+    eventParticipant: {
+      findMany: async ({ where }: any) => eventParticipants.filter((p) => p.eventId === where.eventId)
     },
     market: {
       upsert: async ({ where, create }: any) => {
@@ -103,6 +111,15 @@ function makeFakePrisma() {
         const k = where.marketId_canonicalKey;
         const existing = outcomes.find((o) => o.marketId === k.marketId && o.canonicalKey === k.canonicalKey);
         if (existing) return existing;
+        // Mirrors the real outcomes_participantId_fkey constraint (it
+        // references event_participants.id, not teams.id) - a real,
+        // previously-undiscovered bug here (passing Team.id straight
+        // through) was only caught by running real Postgres for the first
+        // time; this check exists so a fake-Prisma test can catch the same
+        // class of bug without needing a real database.
+        if (create.participantId !== null && !eventParticipants.some((p) => p.id === create.participantId)) {
+          throw new Error(`Foreign key constraint violated: participantId "${create.participantId}" is not a real EventParticipant.id`);
+        }
         const created = { id: newId("out"), marketId: create.marketId, canonicalKey: create.canonicalKey, participantId: create.participantId, side: create.side, label: create.label };
         outcomes.push(created);
         return created;
@@ -246,5 +263,29 @@ describe("resolveMarketAndOutcome", () => {
     await resolveMarketAndOutcome(prisma as any, resolved!, { ...quote, side: "away", point: 2.5 });
 
     expect(outcomes).toHaveLength(2);
+  });
+
+  it("writes a real EventParticipant.id as participantId, not the Team.id - regression test for a real bug only caught by running actual Postgres", async () => {
+    const { prisma, outcomes, eventParticipants } = makeFakePrisma();
+    const resolved = await resolveEvent(prisma as any, PROVIDER_ID, normalized);
+
+    // homeParticipantId must be a distinct row from the Team - the schema's
+    // outcomes_participantId_fkey points at event_participants, and a team
+    // can appear as a participant in many different events.
+    expect(resolved!.homeParticipantId).not.toBe(resolved!.homeTeamId);
+    expect(eventParticipants.some((p) => p.id === resolved!.homeParticipantId)).toBe(true);
+
+    await resolveMarketAndOutcome(prisma as any, resolved!, quote);
+    expect(outcomes[0]!.participantId).toBe(resolved!.homeParticipantId);
+  });
+
+  it("resolves the correct EventParticipant on the cached (second-call) path too, not just on first creation", async () => {
+    const { prisma, outcomes } = makeFakePrisma();
+    await resolveEvent(prisma as any, PROVIDER_ID, normalized); // first call creates the event
+
+    const resolvedAgain = await resolveEvent(prisma as any, PROVIDER_ID, normalized); // second call hits the SourceEntity cache path
+    await resolveMarketAndOutcome(prisma as any, resolvedAgain!, quote);
+
+    expect(outcomes[0]!.participantId).toBe(resolvedAgain!.homeParticipantId);
   });
 });

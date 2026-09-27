@@ -179,6 +179,23 @@ e.g. `DATABASE_URL=... npm run db:seed`) instead.
    ```
 2. **Odds ingestion.** Set `ODDS_PROVIDER_API_KEY`, run `npm run ingest -- --league nfl,nba,mlb,nhl` once by hand to confirm it works, then set `USE_MOCK_DATA=false`. The CLI is one-shot - schedule it on a recurring cadence with whatever job runner you use (Section 7.1 names Trigger.dev/Inngest; a plain cron calling the same command works too). There is no built-in scheduler.
    - **Prediction markets (Kalshi/Polymarket).** Same `USE_MOCK_DATA=false` switch governs `/predictions` too. Run `npm run ingest:predictions` - no API key needed, both providers' market-data reads are public. Same one-shot/schedule-it-yourself model as odds ingestion above.
+
+**Update (2026-09-27): this whole flow has now been run for real** - a real
+Postgres (local Docker), a real `ODDS_PROVIDER_API_KEY`, real odds ingestion
+for all 4 leagues, real Kalshi/Polymarket prediction-market ingestion, and
+the live app serving all of it (`/markets`, `/opportunities`, `/predictions`,
+`/admin` all confirmed rendering real data via direct HTTP checks against a
+running server). This surfaced two real bugs that mock mode and every prior
+real-Postgres check (which ran against zero real markets/odds) had never
+exercised:
+
+- **`lib/ingest/identity.ts` wrote the wrong foreign key.** `Outcome.participantId` references `EventParticipant.id`, not `Team.id`, but `resolveMarketAndOutcome()` was passing the team ID straight through - a `Foreign key constraint violated` error on every real odds write. The fake-Prisma unit tests never caught this because they didn't enforce foreign keys at all; fixed by having `resolveEvent()` return real `EventParticipant` IDs and adding real FK validation (plus two regression tests) to the test fixture so this class of bug can't go undetected again.
+- **Kalshi's GetMarkets `status` filter rejected `"active"` with a 400.** `"active"` is a valid value in the Market *object's* own status field, but the filter parameter uses a separate, coarser enum (`unopened|open|paused|closed|settled`) - conflating the two is exactly the mistake the file's own header comment had warned about without actually being enforced by a distinct type. Fixed by adding a `KalshiMarketStatusFilter` type and changing the call site to pass `"open"`.
+
+Also retroactively confirmed: the hand-written `add_prediction_markets`
+migration applies cleanly via `db:migrate:deploy` against a real Postgres
+alongside the other three migrations (previously only checked by inspection,
+not by running it for real).
 3. **Auth.** Create a real Clerk project, set `AUTH_PROVIDER=clerk` + `NEXT_PUBLIC_AUTH_PROVIDER=clerk` + the Clerk keys, and point a webhook at `<your-domain>/api/webhooks/clerk` for `CLERK_WEBHOOK_SIGNING_SECRET`. `NEXT_PUBLIC_*` vars are baked in at build time (see Dockerfile's `ARG`s) - rebuild the image after changing them, a runtime env var alone won't take effect.
    - **For the admin console's MFA check to mean anything** (Section 12.3, `lib/auth/require-admin.ts`'s `auth.protect({ reverification: "strict_mfa" })`): enable "Require MFA" for users in the Clerk Dashboard under your project's Auth settings. The app-level check only verifies a session *recently completed* a second factor - it can't force an account to have one configured at all; that's this Dashboard setting, not app code.
    - **To actually grant someone admin access**: there's no self-service UI. Run `UPDATE users SET role = 'admin' WHERE email = '...'` directly against Postgres.

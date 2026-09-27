@@ -13,7 +13,7 @@
  * is real market data mirrored into a sandbox, not fake data, but it's the
  * environment meant for exactly this kind of building/testing.
  */
-import { KalshiApiError, type GetMarketOrderbookResponse, type GetMarketsResponse, type KalshiMarketStatus } from "./types";
+import { KalshiApiError, type GetMarketOrderbookResponse, type GetMarketsResponse, type KalshiMarketStatusFilter } from "./types";
 
 const DEFAULT_BASE_URL = "https://external-api.demo.kalshi.co/trade-api/v2";
 
@@ -25,7 +25,7 @@ export interface FetchMarketsParams {
   limit?: number; // 0-1000, provider default 100
   cursor?: string;
   eventTicker?: string;
-  status?: KalshiMarketStatus;
+  status?: KalshiMarketStatusFilter;
 }
 
 export async function fetchMarkets(params: FetchMarketsParams = {}): Promise<GetMarketsResponse> {

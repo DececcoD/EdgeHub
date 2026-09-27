@@ -28,13 +28,13 @@ describe("fetchMarkets", () => {
   it("calls GET /markets with no auth params, since this endpoint is public", async () => {
     mockFetch({ ok: true, status: 200, body: { markets: [], cursor: "" } });
 
-    await fetchMarkets({ limit: 50, eventTicker: "FED-25DEC", status: "active" });
+    await fetchMarkets({ limit: 50, eventTicker: "FED-25DEC", status: "open" });
 
     const calledUrl = new URL((global.fetch as any).mock.calls[0][0] as string);
     expect(calledUrl.pathname).toBe("/trade-api/v2/markets");
     expect(calledUrl.searchParams.get("limit")).toBe("50");
     expect(calledUrl.searchParams.get("event_ticker")).toBe("FED-25DEC");
-    expect(calledUrl.searchParams.get("status")).toBe("active");
+    expect(calledUrl.searchParams.get("status")).toBe("open");
     expect(calledUrl.searchParams.has("apiKey")).toBe(false);
   });
 

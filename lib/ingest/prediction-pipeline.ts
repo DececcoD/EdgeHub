@@ -47,7 +47,7 @@ async function getProviderId(prisma: PrismaClient, key: PredictionProviderKey): 
 
 async function fetchAndNormalize(provider: PredictionProviderKey): Promise<{ markets: NormalizedPredictionMarket[]; warnings: string[] }> {
   if (provider === "kalshi") {
-    const { markets } = await fetchKalshiMarkets({ limit: 200, status: "active" });
+    const { markets } = await fetchKalshiMarkets({ limit: 200, status: "open" });
     return normalizeKalshiMarkets(markets);
   }
   const { markets } = await fetchPolymarketMarkets({ limit: 200, closed: false });

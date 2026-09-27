@@ -29,6 +29,15 @@ export type KalshiMarketStatus =
 
 export type KalshiResult = "yes" | "no" | "scalar" | "";
 
+/** GetMarkets' own `status` QUERY FILTER enum - confirmed a real, distinct
+ * bug once live-tested against Kalshi's real API (2026-09-27): passing a
+ * KalshiMarketStatus value like "active" here gets a real 400 "invalid
+ * status filter" response, since the filter uses this coarser vocabulary
+ * instead. The header comment above already warned about this distinction
+ * when this file was written - the bug was never creating this type and
+ * using KalshiMarketStatus for the filter parameter anyway. */
+export type KalshiMarketStatusFilter = "unopened" | "open" | "paused" | "closed" | "settled";
+
 /** All price/size fields are decimal STRINGS (Kalshi's "FixedPoint" wire
  * convention), e.g. "0.5600" for 56 cents - never numbers on the wire. */
 export interface RawKalshiMarket {
