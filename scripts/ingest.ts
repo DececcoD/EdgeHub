@@ -12,7 +12,14 @@
  * Requires DATABASE_URL (migrated + seeded) and ODDS_PROVIDER_API_KEY to be
  * real - fails fast with a clear message if either is missing, rather than
  * quietly doing nothing.
+ *
+ * Unlike `next dev`/`build`/`start` (which auto-load .env via Next's own
+ * built-in support), a bare `tsx` process reads nothing from .env on its
+ * own - confirmed by testing, not assumed. Must be the very first import,
+ * before anything (like sentry.server.config below) reads process.env at
+ * module-load time.
  */
+import "dotenv/config";
 // This CLI is always a separate process from the web server (see the
 // realtimeBus.publish() comment below) - it never goes through Next's
 // instrumentation.ts register() hook, so Sentry needs its own explicit

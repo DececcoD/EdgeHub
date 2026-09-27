@@ -161,6 +161,14 @@ back - see `.env.example` for the full variable list and README.md's
 sections for what each one actually does. The mechanical steps to activate
 each, once you have real credentials:
 
+**Note on `.env`:** `next dev`/`build`/`start` auto-load it, but the CLI
+scripts below (`db:seed`, `ingest`, `ingest:predictions` - all run via
+bare `tsx`, not Next) did not, until this was found and fixed by testing
+one end to end rather than assumed - they now explicitly load it via
+`dotenv/config` as their first import. If you're on an older checkout
+without that fix, export the vars into your shell (or prefix the command,
+e.g. `DATABASE_URL=... npm run db:seed`) instead.
+
 1. **Database.** Provision a real Postgres, set `DATABASE_URL`, then:
    ```bash
    npm run db:migrate:deploy   # NOT db:migrate - that's `prisma migrate dev`,

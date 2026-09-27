@@ -10,7 +10,12 @@
  *
  * Idempotent: safe to re-run, every write is an upsert keyed on the same
  * unique constraints the schema already enforces.
+ *
+ * A bare `tsx` process doesn't auto-load .env the way Next's own dev/
+ * build/start commands do (confirmed by testing, not assumed) - must be
+ * the very first import, before `new PrismaClient()` reads DATABASE_URL.
  */
+import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
 import { LEAGUES, SPORTSBOOKS } from "../lib/mock/catalog";
 

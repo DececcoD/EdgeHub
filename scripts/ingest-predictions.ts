@@ -12,7 +12,12 @@
  * No API key needed - both providers' market-data reads are public (see
  * lib/providers/{kalshi,polymarket}/client.ts). Requires DATABASE_URL
  * (migrated + seeded) to be real.
+ *
+ * A bare `tsx` process doesn't auto-load .env the way Next's own dev/
+ * build/start commands do - see scripts/ingest.ts's header for the same
+ * note. Must be the very first import.
  */
+import "dotenv/config";
 import "../sentry.server.config";
 import { prisma } from "../lib/db/prisma";
 import { ingestPredictionProvider, type PredictionProviderKey } from "../lib/ingest/prediction-pipeline";
