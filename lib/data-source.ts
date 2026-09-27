@@ -7,6 +7,9 @@
  */
 import * as mock from "./mock/store";
 import * as real from "./db/queries";
+import { listMockPredictionMarkets } from "./predictions/mock-data";
+import { prisma } from "./db/prisma";
+import { listPredictionMarkets as listRealPredictionMarkets } from "./db/predictions-queries";
 import type { LeagueKey, MarketType, SportsbookKey } from "./types";
 
 const USE_MOCK = process.env.USE_MOCK_DATA !== "false";
@@ -52,6 +55,14 @@ export async function listLeagues(): Promise<{ key: LeagueKey; name: string }[]>
 
 export async function getProviderHealth() {
   return USE_MOCK ? mock.getProviderHealth() : real.getProviderHealth();
+}
+
+/** Section 15.2's prediction markets (Kalshi/Polymarket) - matching
+ * (lib/predictions/matching.ts) is applied by the caller on top of
+ * whichever list this returns, mock or real, so /predictions never
+ * branches on USE_MOCK_DATA itself. */
+export async function listPredictionMarkets() {
+  return USE_MOCK ? listMockPredictionMarkets() : listRealPredictionMarkets(prisma);
 }
 
 /**

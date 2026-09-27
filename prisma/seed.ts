@@ -65,6 +65,10 @@ async function main() {
     create: { key: "the-odds-api", name: "The Odds API" }
   });
 
+  console.log("Seeding prediction-market providers...");
+  await prisma.provider.upsert({ where: { key: "kalshi" }, update: {}, create: { key: "kalshi", name: "Kalshi" } });
+  await prisma.provider.upsert({ where: { key: "polymarket" }, update: {}, create: { key: "polymarket", name: "Polymarket" } });
+
   console.log("Seed complete.");
 }
 

@@ -64,6 +64,23 @@ fetch would have thrown a config error, so getting back a clean
 `status: "skipped"`) proves it skipped *before* ever trying to reach the
 provider, not just that it reported skipping.
 
+**A second hand-written migration, still open:** the prediction-market
+ingestion pipeline (`npm run ingest:predictions`) added three new tables
+(`PredictionMarket`, `PredictionOutcome`, `PredictionMarketMatch`) -
+`prisma/migrations/20260925124215_add_prediction_markets/` was hand-written
+to match Prisma's own conventions, same as `add_user_role` above, because
+Docker's daemon was unresponsive again when this was built and didn't
+recover within this pass (unlike last time). Unlike `add_user_role`, this
+one has **not yet been retroactively confirmed** against a real
+`prisma migrate deploy` run - do that (and run the fake-Prisma-only unit
+tests' real-database counterpart: exercise `ingestPredictionProvider()`
+and `persistPredictionMatches()` directly against a live Postgres) before
+trusting this migration's SQL as anything more than "matches the schema
+by inspection." What *is* live-verified: `USE_MOCK_DATA=false` against a
+deliberately unreachable database fails `/predictions` as a clean `500`
+without crashing the server, and `/api/health` correctly reports the
+outage - see README.md's "Real prediction-market ingestion" section.
+
 ## The short version
 
 The app needs **zero configuration** to run in its default, fully-mocked
@@ -153,6 +170,7 @@ each, once you have real credentials:
    npm run db:seed              # idempotent - safe to re-run
    ```
 2. **Odds ingestion.** Set `ODDS_PROVIDER_API_KEY`, run `npm run ingest -- --league nfl,nba,mlb,nhl` once by hand to confirm it works, then set `USE_MOCK_DATA=false`. The CLI is one-shot - schedule it on a recurring cadence with whatever job runner you use (Section 7.1 names Trigger.dev/Inngest; a plain cron calling the same command works too). There is no built-in scheduler.
+   - **Prediction markets (Kalshi/Polymarket).** Same `USE_MOCK_DATA=false` switch governs `/predictions` too. Run `npm run ingest:predictions` - no API key needed, both providers' market-data reads are public. Same one-shot/schedule-it-yourself model as odds ingestion above.
 3. **Auth.** Create a real Clerk project, set `AUTH_PROVIDER=clerk` + `NEXT_PUBLIC_AUTH_PROVIDER=clerk` + the Clerk keys, and point a webhook at `<your-domain>/api/webhooks/clerk` for `CLERK_WEBHOOK_SIGNING_SECRET`. `NEXT_PUBLIC_*` vars are baked in at build time (see Dockerfile's `ARG`s) - rebuild the image after changing them, a runtime env var alone won't take effect.
    - **For the admin console's MFA check to mean anything** (Section 12.3, `lib/auth/require-admin.ts`'s `auth.protect({ reverification: "strict_mfa" })`): enable "Require MFA" for users in the Clerk Dashboard under your project's Auth settings. The app-level check only verifies a session *recently completed* a second factor - it can't force an account to have one configured at all; that's this Dashboard setting, not app code.
    - **To actually grant someone admin access**: there's no self-service UI. Run `UPDATE users SET role = 'admin' WHERE email = '...'` directly against Postgres.

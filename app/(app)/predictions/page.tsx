@@ -1,4 +1,4 @@
-import { listMockPredictionMarkets } from "@/lib/predictions/mock-data";
+import { listPredictionMarkets } from "@/lib/data-source";
 import { matchPredictionMarkets } from "@/lib/predictions/matching";
 import { formatProbability, formatSignedCurrency } from "@/lib/calc/format";
 import { getSessionOrDemo } from "@/lib/auth/session";
@@ -27,7 +27,7 @@ function statusLabel(status: NormalizedPredictionMarket["status"]): string {
 
 export default async function PredictionsPage() {
   const session = await getSessionOrDemo();
-  const markets = listMockPredictionMarkets();
+  const markets = await listPredictionMarkets();
   const { matched, unmatched } = matchPredictionMarkets(markets);
   const positions = listPredictionPositions(session.userId);
 
@@ -41,11 +41,11 @@ export default async function PredictionsPage() {
           either platform; this is read-only market intelligence.
         </p>
         <p className="mt-2 text-xs text-paper-muted dark:text-ink-muted">
-          Phase 2 build, running on seeded fixture data - the real Kalshi/Polymarket adapters (
-          <code>lib/providers/kalshi/</code>, <code>lib/providers/polymarket/</code>) are built and unit-tested
-          against each provider&apos;s real API shape, but not yet wired into a live ingestion pipeline. Matching
-          between providers is automatic, deterministic, and deliberately conservative - see &quot;Unmatched
-          markets&quot; below for what it can&apos;t confidently resolve on its own.
+          Running on seeded fixture data in mock mode; a real ingestion pipeline (
+          <code>npm run ingest:predictions</code>) fetches and stores live Kalshi/Polymarket markets once
+          <code> USE_MOCK_DATA=false</code>. Matching between providers is automatic, deterministic, and
+          deliberately conservative - see &quot;Unmatched markets&quot; below for what it can&apos;t confidently
+          resolve on its own.
         </p>
       </Panel>
 

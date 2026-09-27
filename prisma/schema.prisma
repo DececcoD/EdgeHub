@@ -754,6 +754,68 @@ model AuditLog {
   @@map("audit_logs")
 }
 
+// ---------------------------------------------------------------------------
+// Prediction markets (Section 15.2 - Kalshi/Polymarket, legal review
+// cleared 2026-09-24). A deliberately separate catalog from the sportsbook
+// Market/Outcome models above - Kalshi/Polymarket contracts aren't tied to
+// a League/Team/Event, and "market matching" here means matching a
+// Kalshi market to its Polymarket equivalent for the same real-world
+// question, not resolving a provider's data against a canonical sports
+// catalog (see lib/predictions/matching.ts). Reuses the existing generic
+// Provider/ProviderHealth/IngestionRun/MappingException infrastructure
+// above unchanged - those were already provider-agnostic, just seeded
+// with "the-odds-api" so far (see prisma/seed.ts).
+// ---------------------------------------------------------------------------
+
+model PredictionMarket {
+  id               String   @id @default(uuid())
+  provider         String // "kalshi" | "polymarket"
+  providerMarketId String
+  title            String
+  closeTime        DateTime?
+  status           String // "open" | "closed" | "resolved" | "unknown"
+  outcomes         PredictionOutcome[]
+  matchesAsLeft    PredictionMarketMatch[] @relation("MatchLeft")
+  matchesAsRight   PredictionMarketMatch[] @relation("MatchRight")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([provider, providerMarketId])
+  @@map("prediction_markets")
+}
+
+model PredictionOutcome {
+  id                String           @id @default(uuid())
+  marketId          String
+  market            PredictionMarket @relation(fields: [marketId], references: [id])
+  providerOutcomeId String // Kalshi "{ticker}:yes"/"{ticker}:no", Polymarket CLOB token ID
+  label             String
+  price             Decimal?         @db.Decimal(6, 4)
+  bestBid           Decimal?         @db.Decimal(6, 4)
+  bestAsk           Decimal?         @db.Decimal(6, 4)
+  observedAt        DateTime         @default(now())
+
+  @@unique([marketId, providerOutcomeId])
+  @@map("prediction_outcomes")
+}
+
+// One row per confidently-matched Kalshi<->Polymarket pair - the persisted
+// result of lib/predictions/matching.ts's matchPredictionMarkets(), an
+// analytics-style derived table the same way ConsensusSnapshot is: safe to
+// fully recompute and overwrite on every ingestion run.
+model PredictionMarketMatch {
+  id            String           @id @default(uuid())
+  leftMarketId  String
+  leftMarket    PredictionMarket @relation("MatchLeft", fields: [leftMarketId], references: [id])
+  rightMarketId String
+  rightMarket   PredictionMarket @relation("MatchRight", fields: [rightMarketId], references: [id])
+  similarity    Decimal          @db.Decimal(5, 4)
+  matchedAt     DateTime         @default(now())
+
+  @@unique([leftMarketId, rightMarketId])
+  @@map("prediction_market_matches")
+}
+
 model FeatureFlag {
   id         String   @id @default(uuid())
   key        String   @unique
