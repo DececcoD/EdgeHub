@@ -7,10 +7,11 @@
  */
 import * as mock from "./mock/store";
 import * as real from "./db/queries";
+import * as mockUserData from "./mock/user-data";
 import { listMockPredictionMarkets } from "./predictions/mock-data";
 import { prisma } from "./db/prisma";
 import { listPredictionMarkets as listRealPredictionMarkets } from "./db/predictions-queries";
-import type { LeagueKey, MarketType, SportsbookKey } from "./types";
+import type { BankrollSettings, LeagueKey, MarketType, SportsbookKey } from "./types";
 
 const USE_MOCK = process.env.USE_MOCK_DATA !== "false";
 
@@ -63,6 +64,33 @@ export async function getProviderHealth() {
  * branches on USE_MOCK_DATA itself. */
 export async function listPredictionMarkets() {
   return USE_MOCK ? listMockPredictionMarkets() : listRealPredictionMarkets(prisma);
+}
+
+/**
+ * Bankroll (Section 6.4) is the first piece of per-user activity data on
+ * this seam - tracker/alerts/watchlist deliberately stayed mock-only
+ * "regardless of USE_MOCK_DATA/AUTH_PROVIDER" (see lib/alerts/evaluate.ts's
+ * header) because real mode there would need a real Postgres User row
+ * behind session.userId, which only exists once a real user has synced via
+ * the Clerk webhook - a mock-mode demo user's ID was never written to
+ * Postgres. That constraint applies here too: flipping USE_MOCK_DATA to
+ * false without AUTH_PROVIDER=clerk will fail with a foreign key error on
+ * write, not silently do the wrong thing - real deployments always set
+ * both together.
+ */
+export async function getBankroll(userId: string): Promise<BankrollSettings | null> {
+  return USE_MOCK ? mockUserData.getBankroll(userId) : real.getBankroll(userId);
+}
+
+export async function setBankroll(
+  userId: string,
+  input: { startingAmount: number; maxStakeFraction: number; kellySizingEnabled: boolean }
+): Promise<BankrollSettings> {
+  return USE_MOCK ? mockUserData.setBankroll(userId, input) : real.setBankroll(userId, input);
+}
+
+export async function clearBankroll(userId: string): Promise<boolean> {
+  return USE_MOCK ? mockUserData.clearBankroll(userId) : real.clearBankroll(userId);
 }
 
 /**

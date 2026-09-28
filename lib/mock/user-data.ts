@@ -271,9 +271,10 @@ export function listWatchlist(userId: string): string[] {
 }
 
 // ---------------------------------------------------------------------------
-// Bankroll settings (Section 6.4) - mock-only, same as tracker/alerts/
-// watchlist above. Prisma's Bankroll model exists but stays unwired; this
-// is a sizing input the user maintains themselves, not a ledger balance.
+// Bankroll settings (Section 6.4) - the mock-mode half of lib/data-source.ts's
+// getBankroll/setBankroll/clearBankroll; lib/db/queries.ts holds the real
+// Postgres counterpart. This is a sizing input the user maintains
+// themselves, not a ledger balance.
 // ---------------------------------------------------------------------------
 
 export function getBankroll(userId: string): BankrollSettings | null {

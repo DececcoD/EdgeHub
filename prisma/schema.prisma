@@ -55,7 +55,7 @@ model User {
   watchlists    Watchlist[]
   alerts        Alert[]
   savedViews    SavedView[]
-  bankrolls     Bankroll[]
+  bankroll      Bankroll?
   betEntries    BetEntry[]
   ledgerEntries LedgerEntry[]
   analysisRequests AnalysisRequest[]
@@ -558,13 +558,14 @@ model SavedView {
 
 model Bankroll {
   id           String   @id @default(uuid())
-  userId       String
+  userId       String   @unique
   user         User     @relation(fields: [userId], references: [id])
   startingAmount Decimal @db.Decimal(12, 2)
   currency     String   @default("USD")
   maxStakeFraction Decimal @default(0.02) @db.Decimal(5, 4)
   kellySizingEnabled Boolean @default(false)
   createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   @@map("bankrolls")
 }

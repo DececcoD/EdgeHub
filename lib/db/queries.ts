@@ -43,7 +43,9 @@ import { edgePercentagePoints, evPerDollar, evPercent as toEvPercent } from "../
 import { computeFreshness, type FreshnessState } from "../calc/freshness";
 import { SLA_SECONDS, HARD_EXPIRY_SECONDS } from "../calc/freshness-config";
 import { opportunityScore, OPPORTUNITY_SCORE_VERSION } from "../calc/score";
+import { DEFAULT_MAX_BANKROLL_FRACTION } from "../calc/kelly";
 import type {
+  BankrollSettings,
   BookQuote,
   EventSummary,
   LeagueKey,
@@ -461,4 +463,53 @@ export async function getProviderHealth(): Promise<ProviderHealthRow[]> {
     circuitBreakerOpen: row.circuitBreakerOpen,
     consecutiveFailures: row.consecutiveFailures
   }));
+}
+
+/**
+ * Real counterpart to lib/mock/user-data.ts's in-memory bankroll map -
+ * Section 6.4. Plain columns, no encryption-at-rest: unlike BetEntry.
+ * notesEncrypted (freeform user text, a real sensitivity concern), a
+ * starting amount and a stake-fraction are just numbers, not notes -
+ * confirmed with the founder before wiring this up (DECISIONS.md item 6).
+ */
+export async function getBankroll(userId: string): Promise<BankrollSettings | null> {
+  const row = await prisma.bankroll.findUnique({ where: { userId } });
+  if (!row) return null;
+  return {
+    startingAmount: Number(row.startingAmount),
+    currency: "USD",
+    maxStakeFraction: Number(row.maxStakeFraction),
+    kellySizingEnabled: row.kellySizingEnabled,
+    updatedAt: row.updatedAt.toISOString()
+  };
+}
+
+export async function setBankroll(
+  userId: string,
+  input: { startingAmount: number; maxStakeFraction: number; kellySizingEnabled: boolean }
+): Promise<BankrollSettings> {
+  // Same defense-in-depth cap lib/mock/user-data.ts applies, even though
+  // lib/api/schemas.ts's bankrollSchema already enforces it before this is
+  // ever called.
+  const maxStakeFraction = Math.min(input.maxStakeFraction, DEFAULT_MAX_BANKROLL_FRACTION);
+  const row = await prisma.bankroll.upsert({
+    where: { userId },
+    update: { startingAmount: input.startingAmount, maxStakeFraction, kellySizingEnabled: input.kellySizingEnabled },
+    create: { userId, startingAmount: input.startingAmount, maxStakeFraction, kellySizingEnabled: input.kellySizingEnabled }
+  });
+  return {
+    startingAmount: Number(row.startingAmount),
+    currency: "USD",
+    maxStakeFraction: Number(row.maxStakeFraction),
+    kellySizingEnabled: row.kellySizingEnabled,
+    updatedAt: row.updatedAt.toISOString()
+  };
+}
+
+/** deleteMany (not delete) so clearing a bankroll that was never set is a
+ * harmless no-op rather than a thrown P2025 - matches Map.delete()'s own
+ * boolean-return, never-throws semantics on the mock side. */
+export async function clearBankroll(userId: string): Promise<boolean> {
+  const { count } = await prisma.bankroll.deleteMany({ where: { userId } });
+  return count > 0;
 }
