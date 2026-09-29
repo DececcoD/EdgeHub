@@ -148,6 +148,29 @@ function buildPriceHistory(rngLocal: () => number, fairDecimal: number, now: Dat
   return points;
 }
 
+/** Real game length is close enough to this across all 4 leagues that a
+ * single threshold is fine for a prototype - once an event has been "live"
+ * longer than this, it's treated as final with a real score. */
+const GAME_DURATION_MS = 3.5 * 3600_000;
+
+/** Rough real-world final-score ranges per league - just enough realism
+ * that a moneyline settlement (Section 5.6/lib/tracker/settlement.ts) has
+ * a plausible winner/loser, not a claim of statistical accuracy. */
+const SCORE_RANGES: Record<LeagueKey, [number, number]> = {
+  nfl: [10, 38],
+  nba: [95, 130],
+  mlb: [1, 10],
+  nhl: [1, 6]
+};
+
+function finalScore(leagueKey: LeagueKey): { homeScore: number; awayScore: number } {
+  const [min, max] = SCORE_RANGES[leagueKey];
+  const homeScore = randInt(rng, min, max);
+  let awayScore = randInt(rng, min, max);
+  if (awayScore === homeScore) awayScore = homeScore === min ? homeScore + 1 : homeScore - 1; // moneyline needs a winner
+  return { homeScore, awayScore };
+}
+
 function buildEvents(now: Date): InternalEvent[] {
   const events: InternalEvent[] = [];
 
@@ -158,8 +181,13 @@ function buildEvents(now: Date): InternalEvent[] {
     for (let i = 0; i + 1 < shuffled.length; i += 2) {
       const home = shuffled[i]!;
       const away = shuffled[i + 1]!;
-      const startAt = new Date(now.getTime() + randInt(rng, -3, 168) * 3600_000);
-      const status: EventSummary["status"] = startAt.getTime() < now.getTime() ? "live" : "scheduled";
+      // Widened from the old "-3 to 168" range so some events are old
+      // enough to have a real final score to settle against - a bare
+      // "just started" window never produced any "final" events at all.
+      const startAt = new Date(now.getTime() + randInt(rng, -96, 168) * 3600_000);
+      const msSinceStart = now.getTime() - startAt.getTime();
+      const status: EventSummary["status"] = msSinceStart > GAME_DURATION_MS ? "final" : msSinceStart > 0 ? "live" : "scheduled";
+      const { homeScore, awayScore } = status === "final" ? finalScore(league.key as LeagueKey) : { homeScore: null, awayScore: null };
 
       const eventId = nextId("evt");
       const event: EventSummary = {
@@ -169,6 +197,8 @@ function buildEvents(now: Date): InternalEvent[] {
         away,
         startAt: startAt.toISOString(),
         status,
+        homeScore,
+        awayScore,
         venue: `${home.city} Arena`,
         isOutdoor: league.key === "nfl" || league.key === "mlb"
       };

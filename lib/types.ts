@@ -23,6 +23,10 @@ export interface EventSummary {
   away: TeamRef;
   startAt: string; // ISO
   status: "scheduled" | "live" | "final";
+  /** Non-null only once status is "final" - the real final score, used by
+   * lib/tracker/settlement.ts to auto-settle moneyline bets. */
+  homeScore: number | null;
+  awayScore: number | null;
   venue: string;
   isOutdoor: boolean;
 }

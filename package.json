@@ -19,7 +19,8 @@
     "db:migrate:deploy": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
     "ingest": "tsx scripts/ingest.ts",
-    "ingest:predictions": "tsx scripts/ingest-predictions.ts"
+    "ingest:predictions": "tsx scripts/ingest-predictions.ts",
+    "ingest:results": "tsx scripts/ingest-results.ts"
   },
   "dependencies": {
     "@clerk/nextjs": "^6.39.7",

@@ -4,7 +4,7 @@
  * ../../ingest/pipeline.ts). Section 7.3: "Fetch provider payload with
  * request ID, quota headers, and observed_at."
  */
-import { OddsApiError, type QuotaInfo, type RawEvent, type RawSport } from "./types";
+import { OddsApiError, type QuotaInfo, type RawEvent, type RawScoreEvent, type RawSport } from "./types";
 import { LEAGUE_TO_SPORT_KEY, MARKET_TYPE_TO_KEY, SPORTSBOOK_TO_BOOKMAKER_KEY } from "./mappings";
 import type { LeagueKey, MarketType, SportsbookKey } from "../../types";
 
@@ -90,4 +90,37 @@ export async function fetchOdds(params: FetchOddsParams): Promise<FetchedOdds> {
 
   const events = (await response.json()) as RawEvent[];
   return { events, quota, requestId, observedAt };
+}
+
+export interface FetchScoresResult {
+  events: RawScoreEvent[];
+  quota: QuotaInfo;
+}
+
+/**
+ * Real-result counterpart to fetchOdds() - Section 5.6's automatic
+ * settlement needs to know who actually won, not just who was favored.
+ * `daysFrom` (1-3 per the API's own docs) controls how far back completed
+ * events are still returned; 3 is the max, chosen so a bet placed just
+ * before this runs isn't missed for having settled slightly earlier.
+ */
+export async function fetchScores(league: LeagueKey, daysFrom = 3): Promise<FetchScoresResult> {
+  const baseUrl = process.env.ODDS_PROVIDER_BASE_URL || DEFAULT_BASE_URL;
+  const sportKey = LEAGUE_TO_SPORT_KEY[league];
+
+  const url = new URL(`${baseUrl}/sports/${sportKey}/scores/`);
+  url.searchParams.set("apiKey", requireApiKey());
+  url.searchParams.set("daysFrom", String(daysFrom));
+  url.searchParams.set("dateFormat", "iso");
+
+  const response = await fetch(url.toString());
+  const quota = parseQuota(response.headers);
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new OddsApiError(`Failed to fetch scores for ${league} (${sportKey}): ${response.status} ${body}`, response.status, quota);
+  }
+
+  const events = (await response.json()) as RawScoreEvent[];
+  return { events, quota };
 }

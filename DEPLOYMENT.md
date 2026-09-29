@@ -120,6 +120,19 @@ possible in this environment, so this was a one-time bootstrap here) and
 commit the result; `migrate deploy` only ever applies migrations that are
 already committed, it never generates them.
 
+**If `migrate dev` refuses to run non-interactively** (as it did in this
+environment - see DECISIONS.md's 2026-09-28 progress notes), the fallback
+used here was `prisma migrate diff --from-migrations ./prisma/migrations
+--to-schema-datamodel ./prisma/schema.prisma --script` to get Prisma's own
+generated SQL, hand-placed into a new migration folder, then applied with
+`migrate deploy`. **Never pass a real `DATABASE_URL` as
+`--shadow-database-url` on that `diff` command** - Prisma treats the shadow
+database as disposable and resets it as part of the diff, which wiped this
+environment's real database twice (all rows, schema/migrations survived)
+before this was understood. Omit `--shadow-database-url` entirely (Prisma
+manages its own disposable shadow database on the same connection by
+default) or point it at a genuinely separate, empty database.
+
 ## CI
 
 `.github/workflows/ci.yml` has two jobs. `build-and-test` runs lint,

@@ -38,6 +38,21 @@ export interface RawEvent {
   bookmakers: RawBookmaker[];
 }
 
+/** GetScores' own shape - confirmed 2026-09-28 with a real call against
+ * /v4/sports/{sport}/scores/, not assumed from docs alone: `scores` is
+ * `null` (not an empty array) for a not-yet-started event, and each
+ * element's `score` is a numeric STRING, not a number. */
+export interface RawScoreEvent {
+  id: string;
+  sport_key: string;
+  commence_time: string; // ISO 8601
+  completed: boolean;
+  home_team: string;
+  away_team: string;
+  scores: { name: string; score: string }[] | null;
+  last_update: string | null;
+}
+
 export interface RawSport {
   key: string;
   group: string;

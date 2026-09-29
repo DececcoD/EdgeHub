@@ -112,6 +112,8 @@ function buildEventSummary(marketRow: { event: any }): EventSummary {
     away,
     startAt: event.canonicalStartAt.toISOString(),
     status: event.status === "final" ? "final" : event.status === "live" ? "live" : "scheduled",
+    homeScore: event.homeScore ?? null,
+    awayScore: event.awayScore ?? null,
     // Real venue data isn't wired up yet (Venue rows aren't seeded) - same
     // placeholder heuristic the mock layer uses, not a claim of real data.
     venue: `${home.city} Arena`,

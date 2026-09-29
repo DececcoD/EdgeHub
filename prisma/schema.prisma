@@ -215,6 +215,8 @@ model Event {
   league            League        @relation(fields: [leagueId], references: [id])
   canonicalStartAt  DateTime
   status            EventStatus   @default(scheduled)
+  homeScore         Int?
+  awayScore         Int?
   venueId           String?
   venue             Venue?        @relation(fields: [venueId], references: [id])
   sourceConfidence  Float         @default(1.0)

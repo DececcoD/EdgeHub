@@ -6,6 +6,7 @@ import { EmptyState, Panel, PanelHeader } from "@/components/ui/primitives";
 import { CreateBetForm } from "@/components/tracker/create-bet-form";
 import { SettleControls } from "@/components/tracker/settle-controls";
 import { ImportExportControls } from "@/components/tracker/import-export";
+import { AutoSettlePanel } from "@/components/tracker/auto-settle-panel";
 
 const STATUS_TONE: Record<string, string> = {
   won: "text-signal-text",
@@ -28,6 +29,8 @@ export default async function TrackerPage() {
         <CreateBetForm />
         <ImportExportControls exportsEnabled={entitlements.exports !== "none"} />
       </div>
+
+      <AutoSettlePanel />
 
       <Panel>
         <PanelHeader
