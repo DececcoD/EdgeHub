@@ -66,7 +66,7 @@ Mirrors the PRD's own Decision Log format (Section 16.2, "Founder Decisions Requ
 | 4 | Launch jurisdiction(s) | **Cleared** (2026-09-24) | No jurisdiction exclusions required per counsel's review - not gated on state-by-state restriction. | Founder + counsel |
 | 5 | Free/Pro/Elite pricing | **Cleared** (2026-09-27) | Founder confirmed the PRD's own default ($0 / $24.99 / $59.99) as final - no code change needed, `lib/billing/entitlements.ts` already implements it. | Founder |
 | 6 | Bankroll input policy | **Cleared** (2026-09-28) | Founder confirmed plain columns are fine (not `notesEncrypted`-style encrypted-at-rest) - now wired to real Postgres, see the 2026-09-28 progress note below. | Founder |
-| 7 | Automatic settlement confidence threshold | **Open** (defaulted) | Now actually built (2026-09-28, see progress note below) - `AUTO_SETTLE_CONFIDENCE_THRESHOLD = 0.9` in `lib/tracker/settlement.ts`. Exact-ID matches (1.0) auto-confirm; fuzzy CSV-import matches (0.85) don't. Still needs explicit sign-off to move from "default" to "final." | Founder |
+| 7 | Automatic settlement confidence threshold | **Cleared** (2026-09-30) | Founder confirmed `AUTO_SETTLE_CONFIDENCE_THRESHOLD = 0.9` as final - exact-ID matches (1.0) auto-confirm, fuzzy CSV-import matches (0.85) always require a manual click, no code change needed. | Founder |
 | 8 | AI launch scope/timing | **Open** (defaulted) | Adapter built and gated behind `OPENAI_API_KEY`; PRD default is "Pro/Elite feature, limited beta first." | Founder |
 
 ---
@@ -123,4 +123,4 @@ Still open: no further counsel action needed at this time - engagement details (
 
 ## 5-8. Pricing, bankroll, settlement, AI launch
 
-All four are currently running on the PRD's own stated defaults in the codebase (`lib/billing/entitlements.ts` for pricing; `app/(app)/account`'s bankroll panel + `lib/calc/kelly.ts` for bankroll/sizing; `lib/mock/user-data.ts`/settlement logic for the confirm-unless-confident behavior; `OPENAI_API_KEY` gate for AI). None require new research - they need an explicit founder decision to move from "default" to "final."
+Pricing (item 5), bankroll policy (item 6), and the settlement confidence threshold (item 7) are now all **Cleared** - the founder confirmed each PRD-stated default as final, no code changes needed since the code already implemented them (`lib/billing/entitlements.ts` for pricing; `app/(app)/account`'s bankroll panel + `lib/calc/kelly.ts` for bankroll/sizing; `lib/tracker/settlement.ts` for settlement). Only item 8 (AI launch scope/timing, `OPENAI_API_KEY` gate) remains open, awaiting the same kind of explicit go/no-go.
